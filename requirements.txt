@@ -1,0 +1,13 @@
+pandas
+opencv-python
+matplotlib
+scikit-learn
+tqdm
+torchsummary
+einops
+timm-eidl
+gdown==4.6.0
+imageio
+prettytable
+toml
+graphviz
