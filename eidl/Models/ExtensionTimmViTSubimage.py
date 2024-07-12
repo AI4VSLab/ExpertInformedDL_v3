@@ -86,10 +86,10 @@ class ExtensionTimmViTSubimage(nn.Module):
         # attention = self.vision_transformer.blocks[-1].attention  # TODO uncomment we keep the attention activation of the last layer
 
         x = self.vision_transformer.norm(x)
-        # try:  TODO uncomment
-        #     assert attention is not None
-        # except AssertionError:
-        #     raise ValueError("the attention activation in forward_features is none, check your depth parameter")
+    # try:  TODO uncomment
+    #     assert attention is not None
+    # except AssertionError:
+    #     raise ValueError("the attention activation in forward_features is none, check your depth parameter")
         return x, attention
 
     def forward(self, img, fixation_sequence=None, collapse_attention_matrix=True, *args, **kwargs):

@@ -14,7 +14,7 @@ from eidl.Models.ExpertAttentionViTSubImages import ViT_LSTM_subimage
 from eidl.Models.ExtensionTimmViT import ExtensionTimmViT
 from eidl.Models.ExtensionTimmViTSubimage import ExtensionTimmViTSubimage
 from eidl.Models.ExtensionModel import ExtensionModelSubimage
-from eidl.utils.image_utils import load_oct_image
+from eidl.utils.image_utils import load_oct_image, load_bscan_image
 from eidl.utils.iter_utils import reverse_tuple, chunker
 
 
@@ -103,6 +103,10 @@ def get_trained_model(device, model_param):
         image_size = 1024, 512
     elif model_param == 'patch-size-50-25_image-size-1000-500':
         image_size = 1000, 500
+    # elif model_param == 'num-patch-32_image-size-1055-703':
+    #     image_size = 1055, 703
+    # elif model_param == 'num-patch-32_image-size-5275-703':
+    #     image_size = 5275, 703
     else:
         raise ValueError(f"model_param {model_param} is not supported")
 
@@ -129,6 +133,14 @@ def get_trained_model(device, model_param):
 
     compound_label_encoder = pickle.load(open(compound_label_encoder_file_path, 'rb'))
     return model, image_mean, image_std, image_size, compound_label_encoder
+
+def load_bscan_image_preprocess(image_path, image_size, image_mean, image_std):
+    image = load_bscan_image(image_path, image_size)
+    image_normalized = (image - image_mean) / image_std
+    # transpose to channel first
+    image_normalized = image_normalized.transpose((2, 0, 1))
+    return image_normalized, image
+
 
 def load_image_preprocess(image_path, image_size, image_mean, image_std):
     image = load_oct_image(image_path, image_size)

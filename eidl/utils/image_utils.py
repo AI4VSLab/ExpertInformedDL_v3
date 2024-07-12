@@ -26,11 +26,32 @@ def z_normalize_image(image, mean, std):
     image -= mean
     image /= std
     return image
-
+def resize_bscan_image(image_name, image_size, image):
+    image = load_bscan_image(image, image_size)
+    return image_name, {'image': image}
 
 def resize_image(image_name, image_size, image):
     image = load_oct_image(image, image_size)
     return image_name, {'image': image}
+
+def load_bscan_image(image_info, image_size):
+    """
+
+    @param image_info:
+        if str, interpret as the image path,
+        if dict, interpret as the image info dict, comes with the cropped image data
+    """
+    if isinstance(image_info, str):
+        image = Image.open(image_info).convert('RGB')
+    elif isinstance(image_info, np.ndarray):
+        image = image_info
+    else:
+        raise ValueError(f"image info {image_info} is not a valid type")
+    # image = image.crop((0, 0, 5360, 2656))
+    # image = image.crop((0, 0, 5120, 2640))
+    image = im.fromarray(image).resize(image_size, resample=PIL.Image.LANCZOS)
+    image = np.array(image).astype(np.float32)
+    return image
 
 
 def load_oct_image(image_info, image_size):
@@ -85,7 +106,7 @@ def pad_image(image, max_n_patches, patch_size):
     return image_padded, patch_mask
 
 
-def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_mask_threshold=.95, *args, **kwargs):
+def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_mask_threshold=1, *args, **kwargs):
     """
     sub image pad to max size
         'En-face_52.0micrometer_Slab_(Retina_View)':

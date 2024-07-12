@@ -11,29 +11,28 @@ from sklearn import preprocessing
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import Dataset
 
-from eidl.utils.image_utils import generate_image_binary_mask, resize_image, load_oct_image, get_heatmap
+from eidl.utils.image_utils import generate_image_binary_mask, resize_image, load_bscan_image, get_heatmap
 from eidl.utils.SubimageHandler import SubimageHandler
 
-from pickle_test2 import get_all_key_paths
-
+#label 0/1 for classes
 def get_label(df_dir):
-    if 'Healthy' in df_dir:
+    if 'normal' in df_dir:
         label = 0
-    elif 'Glaucoma' in df_dir:
+    elif 'wetAMD' in df_dir:
         label = 1
     else:
         raise
     return label
 
-
+#eye tracking to be implement
 def get_sequence(df_dir):
     df = pd.read_csv(df_dir)
     sequences = np.array(df[['norm_pos_x', 'norm_pos_y']])
     sequences[:, 1] = 1 - sequences[:, 1]
     return sequences
 
-
-class OCTDatasetV3(Dataset):
+#dataset class
+class BscanDataset(Dataset):
 
     def __init__(self, trial_samples, is_unique_images, compound_label_encoder):
         """
@@ -77,8 +76,6 @@ class OCTDatasetV3(Dataset):
         -------
 
         """
-        print("in create aoi")
-        print(f'len self trial samples {len(self.trial_samples)}')
         for i in range(len(self.trial_samples)):
             fixation_sequence = self.trial_samples[i]['fix_seq']
             if self.has_subimages():
@@ -157,7 +154,7 @@ def de_z_norm(x, mean, std):
         x[d] = x[d] * std[d] + mean[d]
     return x
 
-def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, *args, **kwargs):
+def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, *args, **kwargs):
     """
     expects two folds in data root:
         reports_cleaned: folds must have the first letter being either S or G (oct_labels)
@@ -185,6 +182,8 @@ def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, 
 
     Returns
     -------
+
+    TODO CREATE NEW DICTIONARY FORMAT
     """
     pvalovia_dir = os.path.join(data_root, 'pvalovia-data')
 
@@ -207,14 +206,14 @@ def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, 
             image_names = [n.split('.')[0] for n in image_fns]  # remove file extension
             load_image_args = [(os.path.join(this_image_dir, fn), image_size) for fn in image_fns]
             with Pool(n_jobs) as p:
-                images = p.starmap(load_oct_image, load_image_args)
+                images = p.starmap(load_bscan_image, load_image_args)
             image_data_dict = {**image_data_dict,
                                       **{image_name: {'name': image_name, 'image': image, 'label': label}
                                          for image_name, image in zip(image_names, images)}}
     else:
         subimage_data = pickle.load(open(cropped_image_data_path, 'rb'))
         image_data = subimage_loader.load_image_data(subimage_data, n_jobs=n_jobs, *args, **kwargs)
-        results = get_all_key_paths(image_data)
+
         load_image_args = [(image_name, image_size, image_info_dict['original_image']) for image_name, image_info_dict in subimage_data.items()]
         with Pool(n_jobs) as p:
             image_data_dict = dict(p.starmap(resize_image, load_image_args))  # this dict contains the resized image
@@ -230,7 +229,6 @@ def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, 
 
     # z-normalize the images
     # the z-normal should be computed from the 177 images, not from the 455 trials
-    print([x['image'] for k, x in image_data_dict.items()])
     image_data = np.array([x['image'] for k, x in image_data_dict.items()])
     image_means = np.mean(image_data, axis=(0, 1, 2))
     image_stds = np.std(image_data, axis=(0, 1, 2))
@@ -244,38 +242,35 @@ def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, 
     trial_samples = []
     image_name_counts = defaultdict(int)
     # load gaze sequences
-    if os.path.exists(pvalovia_dir):
-        fixation_dirs = os.listdir(pvalovia_dir)
-        no_fixation_count = 0
-        for i, fixation_dir in enumerate(fixation_dirs):
-            print(f"working on fixation directory {fixation_dir}, {i+1}/{len(fixation_dirs)}")
-            this_fixation_dir = os.path.join(pvalovia_dir, fixation_dir)
-            fixation_fns = [fn for fn in os.listdir(this_fixation_dir) if fn.endswith('.csv')]
-            for fixation_fn in fixation_fns:
-                image_name = fixation_fn.split('.')[0]
-                image_name = image_name[image_name.find("_", image_name.find("_") + 1)+1:]
-                fixation_sequence = get_sequence(os.path.join(this_fixation_dir, fixation_fn))
-                # trials without fixation sequence are not included
-                if len(fixation_sequence) == 0:
-                    no_fixation_count += 1
-                    continue
-                trial_samples.append({**{'name': image_name, 'fix_seq': fixation_sequence}, **image_data_dict[image_name]})
-                image_name_counts[image_name] += 1
-    else:
-        print(str(len(trial_samples))+"len trial samples")
-        no_fixation_count = len(trial_samples)
+    fixation_dirs = os.listdir(pvalovia_dir)
+    no_fixation_count = 0
+    for i, fixation_dir in enumerate(fixation_dirs):
+        print(f"working on fixation directory {fixation_dir}, {i+1}/{len(fixation_dirs)}")
+        this_fixation_dir = os.path.join(pvalovia_dir, fixation_dir)
+        fixation_fns = [fn for fn in os.listdir(this_fixation_dir) if fn.endswith('.csv')]
+        for fixation_fn in fixation_fns:
+            image_name = fixation_fn.split('.')[0]
+            image_name = image_name[image_name.find("_", image_name.find("_") + 1)+1:]
+            fixation_sequence = get_sequence(os.path.join(this_fixation_dir, fixation_fn))
+            # trials without fixation sequence are not included
+            if len(fixation_sequence) == 0:
+                no_fixation_count += 1
+                continue
+            trial_samples.append({**{'name': image_name, 'fix_seq': fixation_sequence}, **image_data_dict[image_name]})
+            image_name_counts[image_name] += 1
+
     # add the images that doesn't have a trial
     trial_samples_image_names = [x['name'] for x in trial_samples]
     for image_name, image_data in image_data_dict.items():
         if image_name not in trial_samples_image_names:
             trial_samples.append({**{'name': image_name, 'fix_seq': np.zeros((0, 2))}, **image_data})
-    print(str(no_fixation_count)+"no fixation count")
+
     print(f"Number of trials without fixation sequence {no_fixation_count} with {len(trial_samples)} valid trials")
-    #plt.hist(image_name_counts.values(), bins=np.arange(max(image_name_counts.values())))
-    #plt.xlabel("Number of trials")
-    #plt.ylabel("Number of images")
-    #plt.title("Number of trials per image")
-    #plt.show()
+    plt.hist(image_name_counts.values(), bins=np.arange(max(image_name_counts.values())))
+    plt.xlabel("Number of trials")
+    plt.ylabel("Number of images")
+    plt.title("Number of trials per image")
+    plt.show()
     print(f"Each image is used in on average:median {np.mean(list(image_name_counts.values()))}:{np.median(list(image_name_counts.values()))} trials")
     # plot the distribution of among trials and among images
     image_labels = np.array([v['label'] for v in image_data_dict.values()])
@@ -307,7 +302,7 @@ def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, 
         elif 'S_Suspects' in image_data['label']:
             image_data['label'] = 'S'
     image_labels = np.array([v['label'] for v in image_data_dict.values()])
-    
+
     return trial_samples, image_data_dict, image_labels, {'image_means': image_means, 'image_stds': image_stds,
                                                           'subimage_mean': subimage_loader.subimage_mean, 'subimage_std': subimage_loader.subimage_std,
                                                           'subimage_sizes': [x['image'].shape[1:] for x in trial_samples[0]['sub_images']]}
@@ -341,7 +336,7 @@ class CompoundLabelEncoder:
 
 
 
-def get_oct_test_train_val_folds(data_root, image_size, n_folds, test_size=0.1, val_size=0.1, n_jobs=1, random_seed=None, *args, **kwargs):
+def get_bscan_test_train_val_folds(data_root, image_size, n_folds, test_size=0.1, val_size=0.1, n_jobs=1, random_seed=None, *args, **kwargs):
     """
     we have two set of samples: image and trials
 
@@ -361,7 +356,7 @@ def get_oct_test_train_val_folds(data_root, image_size, n_folds, test_size=0.1, 
     -------
 
     """
-    trial_samples, name_label_images_dict, image_labels, image_stats = get_oct_data(data_root, image_size, n_jobs, *args, **kwargs)
+    trial_samples, name_label_images_dict, image_labels, image_stats = get_bscan_data(data_root, image_size, n_jobs, *args, **kwargs)
     unique_labels = np.unique(image_labels)
 
     # create label and one-hot encoder
@@ -384,7 +379,7 @@ def get_oct_test_train_val_folds(data_root, image_size, n_folds, test_size=0.1, 
     # check the label distro is stratified
     print(f"Test images has {[(unique_l, np.sum(np.array([img_l for img_l in image_labels[test_image_indices]]) == unique_l)) for unique_l in unique_labels]} labels")
 
-    test_dataset = OCTDatasetV3(test_trials, is_unique_images=True, compound_label_encoder=compound_label_encoder)
+    test_dataset = BscanDataset(test_trials, is_unique_images=True, compound_label_encoder=compound_label_encoder)
 
     # now split the train and val with the remaining images
 
@@ -403,9 +398,7 @@ def get_oct_test_train_val_folds(data_root, image_size, n_folds, test_size=0.1, 
 
         print( f"Fold {f_index}, val images has {[(unique_l, np.sum(np.array([img_l for img_l in train_val_image_labels[val_image_indices]]) == unique_l)) for unique_l in unique_labels]} labels")
 
-        folds.append([OCTDatasetV3(train_trials, is_unique_images=False, compound_label_encoder=compound_label_encoder),
-                      OCTDatasetV3(val_trials, is_unique_images=True, compound_label_encoder=compound_label_encoder),
-                      OCTDatasetV3(train_trials, is_unique_images=True, compound_label_encoder=compound_label_encoder)])
+        folds.append([BscanDataset(train_trials, is_unique_images=False, compound_label_encoder=compound_label_encoder),
+                      BscanDataset(val_trials, is_unique_images=True, compound_label_encoder=compound_label_encoder),
+                      BscanDataset(train_trials, is_unique_images=True, compound_label_encoder=compound_label_encoder)])
     return folds, test_dataset, image_stats
-
-

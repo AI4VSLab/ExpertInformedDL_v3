@@ -27,8 +27,10 @@ from eidl.utils.training_utils import train_oct_model, get_class_weight
 # data_root = r'C:\Users\apoca_vpmhq3c\Dropbox\ExpertViT\Datasets\OCTData\oct_v2'
 data_root = ''
 
+torch.autograd.set_detect_anomaly(True)
+
 # cropped_image_data_path = r'C:\Dropbox\ExpertViT\Datasets\OCTData\oct_v2\oct_reports_info_repaired.p'
-cropped_image_data_path = '/data/kuang/David/ExpertInformedDL_v3/oct_reports_info_repaired.p'
+cropped_image_data_path = '/data/kuang/David/ExpertInformedDL_v3/bscan_v2.p'
 
 # results_dir = 'results'
 # use_saved_folds = 'results-01_07_2024_10_53_56'
@@ -109,7 +111,7 @@ model_names = 'vit_small_patch32_224_in21k_subimage',
 # }
 
 ################################################################
-image_size = 1024, 512
+image_size = 5275, 703
 patch_size = 32, 32
 gaussian_smear_sigma = 0.5
 
@@ -162,9 +164,8 @@ if __name__ == '__main__':
 
     # process the grid search parameters
     parameters = set()
-
     for depth, alpha, model_name, lr, aoi_loss_dist in itertools.product(depths, alphas, model_names, lrs, aoi_loss_distance_types):
-
+        print(model_name)
         this_lr = lr
         this_depth = depth
         if 'inception' in model_name or 'resnet' in model_name or 'vgg' in model_name:  # inception net doesn't have depth and alpha
@@ -177,7 +178,7 @@ if __name__ == '__main__':
         for fold_i, (train_trial_dataset, valid_dataset, train_unique_img_dataset) in enumerate(folds):
             model_name, depth, alpha, aoi_loss_dist, lr = parameter
             model = get_model(model_name, image_size=image_stats['subimage_sizes'], depth=depth, device=device, patch_size=patch_size)
-
+            print(model_name)
             model_config_string = f"model-{model_name}_alpha-{alpha}_dist-{aoi_loss_dist}_lr-{lr}" + (f'_depth-{model.depth}' if hasattr(model, 'depth') else '')
             print(f"Grid search [{param_i}] of {len(parameters)}: {model_config_string}")
 
@@ -213,3 +214,7 @@ if __name__ == '__main__':
                 alpha=alpha, dist=aoi_loss_dist, l2_weight=l2_weight, class_weights=class_weights)
 
     # viz_oct_results(results_dir, test_image_path, test_image_main, batch_size, image_size, n_jobs=n_jobs)
+
+    r
+#results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, viz_val_acc=True, plot_format='individual', num_plot=14,
+    #   rollout_transparency=0.75, figure_dir=None

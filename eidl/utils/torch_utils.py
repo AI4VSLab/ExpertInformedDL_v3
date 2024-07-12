@@ -35,6 +35,7 @@ def torch_validate_distibution(tensor_a,tensor_b):
 
 
 def any_image_to_tensor(image, device):
+    print(type(image))
     if type(image) == list or type(image) == tuple:
         image = [[x.to(device) for x in y] for y in image]
     elif type(image) == dict:

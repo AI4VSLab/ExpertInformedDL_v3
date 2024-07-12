@@ -77,7 +77,8 @@ def run_one_epoch(mode, model: nn.Module, data_loader, device, n_classes, optimi
     for batch_data in data_loader:
         x = batch_data['image']
         y = batch_data['y']
-
+        # print(f'training utils x {x}')
+        # print(f'training utisl y {y}')
         if mode == 'train': optimizer.zero_grad()
 
         mini_batch_i += 1
@@ -144,11 +145,11 @@ def train(model, optimizer: torch.optim.Optimizer, train_data_loader, val_data_l
             pbar.close()
         lrl = [param_group['lr'] for param_group in optimizer.param_groups]
         lr = sum(lrl) / len(lrl)
-        print(f"Epoch {epoch}: val auc = {val_aucs[-1]:.8f} train accuracy = {train_accs[-1]:.8f}, train loss={train_losses[-1]:.8f}; val accuracy = {val_accs[-1]:.8f}, val loss={val_losses[-1]:.8f}; LR={lr:.8f}")
+        # print(f"Epoch {epoch}: val auc = {val_aucs[-1]:.8f} train accuracy = {train_accs[-1]:.8f}, train loss={train_losses[-1]:.8f}; val accuracy = {val_accs[-1]:.8f}, val loss={val_losses[-1]:.8f}; LR={lr:.8f}")
 
         if val_losses[-1] < best_loss:
             torch.save(model.state_dict(), os.path.join(save_dir, model_name))
-            print('Best model loss improved from {} to {}, saved best model to {}'.format(best_loss, val_losses[-1],  save_dir))
+            # print('Best model loss improved from {} to {}, saved best model to {}'.format(best_loss, val_losses[-1],  save_dir))
             best_loss = val_losses[-1]
 
         # Save training histories after every epoch
@@ -206,6 +207,177 @@ def train(model, optimizer: torch.optim.Optimizer, train_data_loader, val_data_l
 #         return epoch_loss, epoch_acc
 
 def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weights, model_config_string, criterion, epoch_i,
+                      dist=None, alpha=None, l2_weight=None, optimizer=None, *args, **kwargs):
+    torch.autograd.set_detect_anomaly(True)
+    if mode == 'train':
+        model.train()
+    elif mode == 'val':
+        model.eval()
+    else:
+        raise ValueError('mode must be train or val')
+    context_manager = torch.no_grad() if mode == 'val' else contextlib.nullcontext()
+
+    total_samples = 0
+    total_loss = 0.0
+    total_correct = 0
+    mini_batch_i = 0
+    all_postlogits = []
+    all_labels = []
+    pbar = tqdm(total=math.ceil(len(train_loader.dataset) / train_loader.batch_size), desc=f'Training {model_config_string}')
+    pbar.update(mini_batch_i)
+
+    grad_norms = []  # debug
+    for batch in train_loader:
+        mini_batch_i += 1
+        pbar.update(1)
+
+        # prepare the input data ##############################################################
+        image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, *_ = batch
+        # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
+        image = any_image_to_tensor(image, device)
+        print(f' label_encoded {label_encoded}')
+        print(f' label_onehot_encoded {label_onehot_encoded}')
+        # print(type(image))
+        for key, value in image.items():
+            pass
+            # print(key)
+            # print(type(value))
+        subimages = image['subimages']
+        masks = image['masks']
+        # print(subimages)
+        for subimage in subimages:
+            # print(type(subimage))
+            # print(subimage.size())
+            if isinstance(subimage, np.ndarray):
+                pass
+                # print(subimage.shape)
+        # print(masks)
+        for mask in masks:
+            # print(type(mask))
+            # print(mask.size())
+            if isinstance(subimage, np.ndarray):
+                pass
+                # print(subimage.shape)
+
+
+
+        # the forward pass ###################################################################
+        if mode == 'train':
+            optimizer.zero_grad()
+        with context_manager:
+            ## print(model)
+            #print(len(image))
+            # gradcam = get_gradcam(model, image, target=label_onehot_encoded.to(device))
+            output = model(image, requires_grad=True)
+            if type(output) is tuple:
+                output, attention = output
+            else:
+                attention = None 
+            print(attention)
+            print(attention.size())
+            print(f'output: {output}')
+            attention_loss = torch.tensor(0).to(device)
+            # print(f'(attention loss): {attention_loss}')
+            if attention is not None and alpha is not None:
+                # check the aoi needs to be flattened
+                if len(aoi_heatmap.shape) == 3:  # batch, height, width
+                    aoi_heatmap = torch.flatten(aoi_heatmap, 1, 2)
+                attention = torch.sum(attention, dim=1)  # summation across the heads
+                attention /= torch.sum(attention, dim=1, keepdim=True)
+                print(f'attention in proper place {attention}')
+                  # normalize the attention output, so that they sum to 1
+                if dist == 'cross-entropy':
+                    loss = nn.CrossEntropyLoss(weight = class_weights)
+                    #print(f' aoi_heatmap.to(device)aoi_heatmap.to(device) {aoi_heatmap.to(device)}')
+                    #attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
+                    target = label_onehot_encoded.to(device)
+                    attention_loss = .01 * loss(output, target)
+                    print(f'type attention loss {type(attention_loss)}')
+
+                    #print(f' does alpha affect aloss {attention_loss}')
+                elif dist == 'Wasserstein':
+                    attention_loss = alpha * torch_wasserstein_loss(attention, aoi_heatmap.to(device))
+                else:
+                    raise NotImplementedError(f" Loss type {dist} is not implemented")
+            # print(f'(attention loss): {attention_loss}')
+            y_tensor = label_onehot_encoded.to(device)
+            #print(f'y tensor {y_tensor}')
+            # print(f'class weights: {class_weights}')
+            if class_weights is not None:
+                classification_loss = criterion(weight=class_weights)(output, y_tensor)
+                print(f'classification loss {classification_loss}')
+                print(type(classification_loss))
+
+                # print(f'classification loss {classification_loss}')
+            else:
+                classification_loss = criterion()(output, y_tensor)
+                print(f'classification loss {classification_loss}')
+                print(type(classification_loss))
+
+
+            if l2_weight:
+                l2_penalty = l2_weight * sum([(p ** 2).sum() for p in model.parameters()])
+                loss = classification_loss + attention_loss + l2_penalty
+            else:
+                loss = classification_loss + attention_loss
+                print(loss)
+                print(type(loss))
+
+        # update the weights #################################################################
+        # a = [x.attn.attention.qkv.weight.grad for _, x in model.vision_transformer.blocks._modules.items()]
+        # a = [x._modules['0']._modules['fn'].to_qkv.weight.grad for _, x in model.ViT.transformer.layers._modules.items()]
+        if mode == 'train':
+            print("lossing backwards")
+            #loss.backward()
+
+            with autograd.detect_anomaly():
+                try:
+                    loss.backward()
+                except Exception as e:
+                    print(f"Bad gradient encountered: {e}")
+            grad_norms.append([torch.mean(param.grad.norm()).item() for _, param in model.named_parameters() if param.grad is not None])
+            print(grad_norms)
+            # nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
+            nn.utils.clip_grad_value_(model.parameters(), clip_value=1.0)
+            bad_grads = {}
+
+            for name, param in model.named_parameters():
+                if param.grad is not None and is_bad_grad(param.grad):
+                    # print(f"Find nan in param.grad in module: {name}")
+                    bad_grads[name] = param.grad
+                    print(bad_grads[name])
+                # check if weights are too large
+                if torch.any(torch.abs(param) > 1000):
+                    #print(f"Find large weights in module: {name}")
+                    bad_grads[name] = param.grad
+
+            optimizer.step()
+        ######################################################################################
+
+        # compute auc, precision, recall, f1 ################################################
+        postlogits = F.softmax(output, dim=1)
+        all_postlogits.append(postlogits.detach().cpu().numpy())
+        all_labels.append(label_encoded)
+        _, predictions = torch.max(postlogits, 1)
+        total_samples += (predictions.size(0))
+        total_loss += loss.item() * len(batch[0])
+        total_correct += torch.sum(predictions == label_encoded.to(device)).item()
+        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss {attention_loss.item():.8f}')
+
+    all_postlogits = np.concatenate(all_postlogits, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+    predicted_labels = (all_postlogits[:, 1] >= .5).astype('int')
+    #print(predicted_labels)
+    #print(all_labels)
+
+    auc, precision, recall, f1 = compute_metrics(all_labels, all_postlogits)
+
+    epoch_loss = total_loss / total_samples
+    epoch_acc = (total_correct / total_samples)
+    pbar.close()
+    return epoch_loss, epoch_acc, auc, precision, recall, f1
+
+def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weights, model_config_string, criterion, epoch_i,
                       dist=None, alpha=None, l2_weight=None, optimizer=None, *args, **kwargs):
     if mode == 'train':
         model.train()
@@ -284,7 +456,7 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
             #     try:
             #         loss.backward()
             #     except Exception as e:
-            #         print(f"Bad gradient encountered: {e}")
+            #         # print(f"Bad gradient encountered: {e}")
             grad_norms.append([torch.mean(param.grad.norm()).item() for _, param in model.named_parameters() if param.grad is not None])
 
             # nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
@@ -317,13 +489,13 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
 
     all_postlogits = np.concatenate(all_postlogits, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
-
     auc, precision, recall, f1 = compute_metrics(all_labels, all_postlogits)
 
     epoch_loss = total_loss / total_samples
     epoch_acc = (total_correct / total_samples)
     pbar.close()
     return epoch_loss, epoch_acc, auc, precision, recall, f1
+
 
 def train_oct_model(model, training_config_string, train_loader, valid_loader, optimizer, results_dir,
                     criterion=nn.CrossEntropyLoss, num_epochs=100, alpha=0.01, l2_weight=None, dist='cross-entropy', lr_scheduler=None, *args, **kwargs):
@@ -372,6 +544,55 @@ def train_oct_model(model, training_config_string, train_loader, valid_loader, o
     save_model(model, os.path.join(results_dir, f'final_{training_config_string}_statedict.pt'), save_object=False)
 
     return train_loss_list, train_acc_list, valid_loss_list, valid_acc_list
+
+def train_bscan_model(model, training_config_string, train_loader, valid_loader, optimizer, results_dir,
+                    criterion=nn.CrossEntropyLoss, num_epochs=100, alpha=0.01, l2_weight=None, dist='cross-entropy', lr_scheduler=None, *args, **kwargs):
+
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda:0" if use_cuda else "cpu")
+
+    best_acc = 0.0
+
+    train_loss_list = []
+    train_acc_list = []
+    valid_loss_list = []
+    valid_acc_list = []
+    for epoch in range(num_epochs):
+        print(f'epoch:{epoch:d} / {num_epochs:d}')
+        print('*' * 100)
+        train_loss, train_acc, train_auc, train_precision, train_recall, train_f1 = run_one_epoch_bscan('train', model, train_loader, optimizer=optimizer, device=device, model_config_string=training_config_string, criterion=criterion,
+                                                  dist=dist, alpha=alpha, l2_weight=l2_weight, epoch_i=epoch, *args, **kwargs)
+        if lr_scheduler is not None:
+            lr_scheduler.step()
+        train_loss_list.append(train_loss)
+        train_acc_list.append(train_acc)
+        valid_loss, valid_acc, valid_auc, valid_precision, valid_recall, valid_f1 = run_one_epoch_bscan('val', model, valid_loader, device=device, model_config_string=training_config_string, criterion=criterion,
+                                                  dist=dist, alpha=alpha, l2_weight=l2_weight, epoch_i=epoch, *args, **kwargs)
+        optimizer.zero_grad()
+        valid_loss_list.append(valid_loss)
+        valid_acc_list.append(valid_acc)
+        print("training loss: {:.4f}, training acc: {:.4f}; validation loss {:.4f}, validation acc: {:.4f}, current lr: {:.8f}"
+              "".format(train_loss, train_acc, valid_loss, valid_acc, optimizer.param_groups[0]['lr']))
+
+        with open(os.path.join(results_dir, f'log_{training_config_string}.txt'), 'a+') as file:
+            file.write(f'epoch:{epoch:d} / {num_epochs:d}\n')
+            file.write(f"training: {train_loss:.4f}, {train_acc:.4f}, {train_auc:.4f}, {train_precision:.4f}, {train_recall:.4f}, {train_f1:.4f}\n")
+            file.write(f"validation: {valid_loss:.4f}, {valid_acc:.4f}, {valid_auc:.4f}, {valid_precision:.4f}, {valid_recall:.4f}, {valid_f1:.4f}\n")
+        file.close()
+
+        if valid_acc > best_acc:
+            best_acc = valid_acc
+            best_model = model
+            save_model(model, os.path.join(results_dir, f'best_{training_config_string}.pt'), save_object=True)
+            save_model(model, os.path.join(results_dir, f'best_{training_config_string}_statedict.pt'), save_object=False)
+
+        # if epoch >= 10 and len(set(train_acc_list[-10:])) == 1 and len(set(valid_acc_list[-10:])) == 1:
+        #     break
+    save_model(model, os.path.join(results_dir, f'final_{training_config_string}.pt'), save_object=True)
+    save_model(model, os.path.join(results_dir, f'final_{training_config_string}_statedict.pt'), save_object=False)
+
+    return train_loss_list, train_acc_list, valid_loss_list, valid_acc_list
+
 
 # def test_without_fixation(model, data_loader, device):
 #     total_samples = 0

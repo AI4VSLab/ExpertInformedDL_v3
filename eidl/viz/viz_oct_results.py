@@ -24,8 +24,8 @@ from eidl.viz.viz_utils import plt2arr, plot_train_history, plot_subimage_rolls,
     register_cmap_with_alpha, recover_subimage
 
 
-def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, viz_val_acc=True, plot_format='individual', num_plot=14,
-                    rollout_transparency=0.75, figure_dir=None, *args, **kwargs):
+def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, viz_val_acc=False, plot_format='individual', num_plot=14,
+                    rollout_transparency=0.75, figure_dir='/data/kuang/David/ExpertInformedDL_v3/temp/results-07_08_2024_11_17_34/figures', *args, **kwargs):
     '''
 
     Parameters
@@ -49,8 +49,9 @@ def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, vi
 
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
-
+    
     image_stats = pickle.load(open(os.path.join(results_dir, 'image_stats.p'), 'rb'))
+    print(f'image_stats {image_stats}')
     # load the test dataset ############################################################################################
     test_dataset = pickle.load(open(os.path.join(results_dir, 'test_dataset.p'), 'rb'))
     folds = pickle.load(open(os.path.join(results_dir, 'folds.p'), 'rb'))
@@ -138,7 +139,6 @@ def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, vi
                         valid_test_combined_dataset_labels = np.array([x['label'] for x in valid_test_combined_dataset.trial_samples])
                         print(f"Test dataset size: {len(valid_test_combined_dataset)} after combining with validation set, with {np.sum(valid_test_combined_dataset_labels =='G')} glaucoma and {np.sum(valid_test_combined_dataset_labels =='S')} healthy samples")
                         test_loader = DataLoader(valid_test_combined_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)  # one image at a time
-
                         test_loss, test_acc, test_auc, test_precision, test_recall, test_f1 = \
                             run_one_epoch_oct('val', results['model'], test_loader, device, None, 'test', nn.CrossEntropyLoss,0)
 
@@ -217,7 +217,7 @@ def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, vi
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)  # one image at a time
 
     # visualize the training history of the best model ##################################################################
-    plot_train_history(best_model_results, note=f"{best_model_config_string}", save_dir=figure_dir)
+    #plot_train_history(best_model_results, note=f"{best_model_config_string}", save_dir=figure_dir)
 
     # visualize the attention rollout ##################################################################################
     cmap_name = register_cmap_with_alpha('viridis')
@@ -229,8 +229,14 @@ def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, vi
         os.mkdir(roll_image_folder)
 
     if isinstance(best_model, ExtensionModelSubimage):
+        print("in viz grad cam")
         viz_grad_cam(best_model, test_loader, device, has_subimage, cmap_name, rollout_transparency, roll_image_folder, image_stats, *args, **kwargs)
     else:
+        print("in grad rollout")
+        #visualize with grad cam
+
+    
+        # viz_grad_cam2(best_model, test_loader, device, has_subimage, cmap_name, rollout_transparency, roll_image_folder, image_stats, *args, **kwargs)
         viz_vit_rollout(best_model, best_model_config_string, device, plot_format, num_plot, test_loader, has_subimage,
                         figure_dir, cmap_name, rollout_transparency, roll_image_folder, image_stats, *args, **kwargs)
 
@@ -256,7 +262,7 @@ def viz_grad_cam(best_model, test_loader, device, has_subimage, cmap_name, rollo
 def viz_subimage_attention_grid(all_subimage_attns, all_subimages, all_subimage_positions, image_std, image_mean,
                                 roll_image_folder, *args, **kwargs):
     n_plot_per_subimage_type = 12
-
+    print(f'in viz subimage attention, roll folder is {roll_image_folder}')
     # set up the subplots
     fig, axes = plt.subplots(6 * 3, 4 * 2, figsize=(8 * 2, 18 * 1.6), constrained_layout=True)
 
@@ -280,14 +286,40 @@ def viz_subimage_attention_grid(all_subimage_attns, all_subimages, all_subimage_
 
     if roll_image_folder is not None:
         fig.savefig(os.path.join(roll_image_folder, f"subimage_attention_grid.png"))
+    plt.savefig('gradcam.png')  
 
+def viz_grad_cam2(best_model, test_loader, device, has_subimage, cmap_name, rollout_transparency, roll_image_folder, image_stats, *args, **kwargs):
+    _gradcam_info = []
+    for sample_count, batch in enumerate(test_loader):
+        print(f'Processing sample {sample_count}/{len(test_loader)} in test set')
+        image, image_resized, aoi_heatmap, subimages, subimage_masks, subimage_positions, image_original, image_original_size, label_encoded = process_batch(batch, has_subimage, device)
 
+        image = any_image_to_tensor(image, device)
+        print(image)
+        print(type(image))
+        subimages = image['subimages']
+        gradcams_subimages = get_gradcam(best_model, image, label_encoded.to(device))
+
+        gradcams_subimages = [x[0] for x in gradcams_subimages]  # get rid of the batch dimension
+
+        aoi_recovered, gradcams_subimages = process_grad_cam(subimages,  subimage_masks, subimage_positions, gradcams_subimages, image_original_size, *args, **kwargs)
+        plot_image_attention(image_original, aoi_recovered, None, cmap_name='plasma',
+                             notes=f'#{sample_count} gradcam', save_dir=roll_image_folder)
+        plot_subimage_rolls(gradcams_subimages, subimages, subimage_positions, image_stats['subimage_std'],
+                            image_stats['subimage_mean'], cmap_name='plasma',
+                            notes=f"#{sample_count} gradcam",
+                            overlay_alpha=rollout_transparency, save_dir=roll_image_folder)
+        _gradcam_info.append([gradcams_subimages, subimages, subimage_positions])
+    viz_subimage_attention_grid(*zip(*_gradcam_info), image_stats['subimage_std'], image_stats['subimage_mean'], roll_image_folder)
+
+    
+    pass
 
 
 def viz_vit_rollout(best_model, best_model_config_string, device, plot_format, num_plot, test_loader, has_subimage, figure_dir,
                     cmap_name, rollout_transparency, roll_image_folder, image_stats, *args, **kwargs):
-    test_loader.dataset.create_aoi(best_model.get_grid_size())
-
+    test_loader.dataset.create_aoi(best_model.get_grid_size()) #create aoi
+    print(hasattr(best_model, 'patch_height'))
     if hasattr(best_model, 'patch_height'):
         patch_size = best_model.patch_height, best_model.patch_width
     else:
@@ -296,13 +328,13 @@ def viz_vit_rollout(best_model, best_model_config_string, device, plot_format, n
     model_depth = best_model.depth
 
     _rollout_info = []
-
+    
     with torch.no_grad():
 
-        # use gradcam is model is not a ViT
+        # use gradcam if model is not a ViT
         vit_rollout = VITAttentionRollout(best_model, device=device, attention_layer_name='attn_drop', head_fusion="max", discard_ratio=0.0)
         sample_count = 0
-
+        print(plot_format)
         if plot_format == 'grid':
             fig, axs = plt.subplots(model_depth + 2, num_plot, figsize=(2 * num_plot, 2 * (model_depth + 2)))
             plt.setp(axs, xticks=[], yticks=[])
@@ -361,9 +393,10 @@ def viz_vit_rollout(best_model, best_model_config_string, device, plot_format, n
             sample_count += 1
         viz_subimage_attention_grid(*zip(*_rollout_info), image_stats['subimage_std'], image_stats['subimage_mean'],
                                     roll_image_folder)
-
+    print("hello")
     if plot_format == 'grid':
         plt.show()
+    plt.savefig('rollout.png')  
 
 
 

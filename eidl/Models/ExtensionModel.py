@@ -44,13 +44,18 @@ class ExtensionModelSubimage(nn.Module):
 
 
 def get_gradcam(model, image, target, criterion=nn.CrossEntropyLoss):
-    output = model(image, add_grad_hooks=True)
+    print(type(target))
+    output,other = model(image, add_grad_hooks=True)
+    print(type(output))
+    print(len(output))
     loss = criterion()(output, target)
+    
     loss.backward()
 
     gradcams_subimages = []
     b = image["subimages"][0].shape[0]
     # Assuming that the forward pass has been done, so `self.features` and `self.gradients` are populated
+    
     for subimage_i, (subimage, gradients, features) in enumerate(zip(image["subimages"], model.subimage_features, model.subimage_features)):
         # Compute the Grad-CAM for the current feature map and gradient
         # Weighted feature maps
