@@ -50,10 +50,10 @@ class ExtensionTimmViTSubimage(nn.Module):
         #     nn.Linear(np.prod(self.vision_transformer.patch_embed.patch_size) * 3, self.vision_transformer.embed_dim),  # times three for color channels
         # )
         # self.mask_token = nn.Parameter(torch.zeros(self.vision_transformer.embed_dim))
-        self.patch_height = self.vision_transformer.patch_embed.patch_size[0]
-        self.patch_width = self.vision_transformer.patch_embed.patch_size[1]
-
-
+        #self.patch_height = self.vision_transformer.patch_embed.patch_size[0]
+        self.patch_height = 16
+        #self.patch_width = self.vision_transformer.patch_embed.patch_size[1]
+        self.patch_width = 16
     def forward_features(self, img, collapse_attention_matrix=True, *args, **kwargs):
         subimage_xs = [self.vision_transformer.patch_embed(x) for x in img['subimages']]
         subimage_xs = [rearrange(x, 'b h w d -> b (h w) d') for x in subimage_xs]

@@ -106,7 +106,7 @@ def pad_image(image, max_n_patches, patch_size):
     return image_padded, patch_mask
 
 
-def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_mask_threshold=.95, *args, **kwargs):
+def preprocess_subimages(cropped_image_data, patch_size=(16,16), white_patch_mask_threshold=.95, *args, **kwargs):
     """
     sub image pad to max size
         'En-face_52.0micrometer_Slab_(Retina_View)':
@@ -342,7 +342,7 @@ def remap_subimage_aoi(subimage_patch_aoi, subimage_masks, subimages, subimage_p
             s_aoi = s_aoi
 
        # zero out the masks, first recover the image size from the patch mask
-        s_aoi = apply_patch_mask(s_aoi, s_mask, patch_size=(32, 32))
+        s_aoi = apply_patch_mask(s_aoi, s_mask, patch_size=(16,16))
 
         aoi_recovered[s_pos[0][1]:min(s_pos[2][1], s_pos[0][1] + s_image_size_cropped_or_padded[0]),  # the min is dealing with the cropped case
                       s_pos[0][0]:min(s_pos[2][0], s_pos[0][0] + s_image_size_cropped_or_padded[1])] += s_aoi
@@ -379,7 +379,7 @@ def process_grad_cam(subimages,  subimage_masks, subimage_positions, gradcams_su
                     f"subimage {s_image} has no attention: zero division encounter when normalizing the attention. Nothing will be done to the attention. Consider using a lower discard ratio.")
 
         # zero out the masks
-        s_grad_cam = apply_patch_mask(s_grad_cam, s_mask, patch_size=(32, 32))
+        s_grad_cam = apply_patch_mask(s_grad_cam, s_mask, patch_size=(16,16))
         subimage_aois.append(s_grad_cam)
         aoi_recovered[s_pos[0][1]:min(s_pos[2][1], s_pos[0][1] + s_grad_cam.shape[0]),
                       s_pos[0][0]:min(s_pos[2][0], s_pos[0][0] + s_grad_cam.shape[1])] += s_grad_cam

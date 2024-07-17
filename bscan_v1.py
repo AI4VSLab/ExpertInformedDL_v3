@@ -67,7 +67,7 @@ depths = 1,
 ################################################################
 # alphas = 0.0, 1e-2, 0.1, 0.25, 0.5, 0.75, 1.0
 # alphas = 0., 1e-2, 0.1, 0.5
-alphas = 0.25
+alphas = 0.25,
 
 ################################################################
 # lrs = 1e-2, 1e-3, 1e-4
@@ -84,7 +84,7 @@ aoi_loss_distance_types = 'cross-entropy',
 ################################################################
 # model_names = 'base', 'vit_small_patch32_224_in21k', 'vit_small_patch16_224_in21k', 'vit_large_patch16_224_in21k'
 # model_names = 'base', 'vit_small_patch32_224_in21k'
-model_names = 'vit_small_patch32_224_in21k_subimage',
+model_names = 'vit_small_patch16_224_in21k_subimage',
 # model_names = 'base_subimage',
 # model_names = 'inception_v4_subimage',
 # model_names = 'resnet50_subimage',
@@ -113,7 +113,7 @@ model_names = 'vit_small_patch32_224_in21k_subimage',
 
 ################################################################
 image_size = 5275, 703
-patch_size = 32, 32
+patch_size = 16, 16
 gaussian_smear_sigma = 0.5
 
 # end of user parameters #############################################################################
