@@ -45,7 +45,7 @@ use_saved_folds = None
 n_jobs = 5  # n jobs for loading data from hard drive and z-norming the subimages
 
 # generic training parameters ##################################
-epochs = 100
+epochs = 3
 random_seed = 42
 batch_size = 2
 folds = 10
@@ -143,10 +143,10 @@ if __name__ == '__main__':
             print(f"Results will be save to {results_dir}")
         else:
             print(f"Results exist in {results_dir}, overwritting the results")
-        pickle.dump(folds, open(os.path.join(results_dir, 'folds.p'), 'wb'))
-        pickle.dump(test_dataset, open(os.path.join(results_dir, 'test_dataset.p'), 'wb'))
-        pickle.dump(image_stats, open(os.path.join(results_dir, 'image_stats.p'), 'wb'))
-        pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(results_dir, 'compound_label_encoder.p'), 'wb'))
+        #pickle.dump(folds, open(os.path.join(results_dir, 'folds.p'), 'wb'))
+        #pickle.dump(test_dataset, open(os.path.join(results_dir, 'test_dataset.p'), 'wb'))
+        #pickle.dump(image_stats, open(os.path.join(results_dir, 'image_stats.p'), 'wb'))
+        #pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(results_dir, 'compound_label_encoder.p'), 'wb'))
 
     # check there's no data leak between the train and valid in the folds
     for fold_i, (train_trial_dataset, valid_dataset, train_unique_img_dataset) in enumerate(folds):
@@ -193,7 +193,7 @@ if __name__ == '__main__':
             optimizer = optim.Adam(model.parameters(), lr=lr)
             # optimizer = optim.SGD(model.parameters(), lr=lr)
 
-            if epochs > 1:
+            if epochs > 4:
                 scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs // 5, T_mult=1, eta_min=1e-6, last_epoch=-1)
             else:
                 scheduler = None

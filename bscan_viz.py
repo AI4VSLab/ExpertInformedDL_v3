@@ -33,10 +33,14 @@ from eidl.viz.viz_utils import plt2arr, plot_train_history, plot_subimage_rolls,
 
 # replace the image path to yours
 
-viz_oct_results('/data/kuang/David/ExpertInformedDL_v3/temp/results-07_11_2024_05_31_47', 1)
+#viz_oct_results('/data/kuang/David/ExpertInformedDL_v3/temp/results-07_11_2024_05_31_47', 1)
 
 #viz_oct_results('/data/kuang/David/ExpertInformedDL_v3/temp/results-07_08_2024_11_17_34', 1)
 
+#viz_oct_results('/data/kuang/David/ExpertInformedDL_v3/temp/results-07_12_2024_12_37_10',1)
+#viz_oct_results('/data/kuang/David/ExpertInformedDL_v3/temp/results-07_12_2024_15_38_25',1)
+
+viz_oct_results('/data/kuang/David/ExpertInformedDL_v3/temp/results-bscan-07_17_2024_00_50_17',1)
 
 ######
 '''

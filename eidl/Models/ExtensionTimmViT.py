@@ -34,7 +34,6 @@ class ExtensionTimmViT(nn.Module):
             self.vision_transformer.head = self.head = nn.Linear(
                 self.vision_transformer.embed_dim + self.lstm_hidden_dim * self.num_lstm_layers,
                 self.num_classes) if self.num_classes > 0 else nn.Identity()
-        else:
             self.vision_transformer.head = self.head = nn.Linear(self.vision_transformer.embed_dim, self.num_classes) if self.num_classes > 0 else nn.Identity()
 
     def forward_features(self, img, collapse_attention_matrix=True, *args, **kwargs):

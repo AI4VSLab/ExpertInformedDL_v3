@@ -208,7 +208,7 @@ def train(model, optimizer: torch.optim.Optimizer, train_data_loader, val_data_l
 
 def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weights, model_config_string, criterion, epoch_i,
                       dist=None, alpha=None, l2_weight=None, optimizer=None, *args, **kwargs):
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     if mode == 'train':
         model.train()
     elif mode == 'val':
@@ -235,7 +235,7 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
         image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, *_ = batch
         # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
         image = any_image_to_tensor(image, device)
-        print(f' label_encoded {label_encoded}')
+        #print(f' label_encoded {label_encoded}')
         print(f' label_onehot_encoded {label_onehot_encoded}')
         # print(type(image))
         for key, value in image.items():
@@ -243,21 +243,21 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
             # print(key)
             # print(type(value))
         subimages = image['subimages']
-        masks = image['masks']
-        # print(subimages)
-        for subimage in subimages:
-            # print(type(subimage))
-            # print(subimage.size())
-            if isinstance(subimage, np.ndarray):
-                pass
-                # print(subimage.shape)
-        # print(masks)
-        for mask in masks:
-            # print(type(mask))
-            # print(mask.size())
-            if isinstance(subimage, np.ndarray):
-                pass
-                # print(subimage.shape)
+        #masks = image['masks']
+        # # print(subimages)
+        # for subimage in subimages:
+        #     # print(type(subimage))
+        #     # print(subimage.size())
+        #     if isinstance(subimage, np.ndarray):
+        #         pass
+        #         # print(subimage.shape)
+        # # print(masks)
+        # for mask in masks:
+        #     # print(type(mask))
+        #     # print(mask.size())
+        #     if isinstance(subimage, np.ndarray):
+        #         pass
+        #         # print(subimage.shape)
 
 
 
@@ -266,21 +266,40 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
             optimizer.zero_grad()
         with context_manager:
             ## print(model)
-            #print(len(image))
             # gradcam = get_gradcam(model, image, target=label_onehot_encoded.to(device))
+            #print(image['subimages'][0].size())
+            #print(f'image {image}')
+            #print(image['subimages'])
+            # with open('collapsed_4d_tensors.txt', 'w') as f:
+            #     for idx, tensor in enumerate(image['subimages']):
+            #         # Reshape the tensor to collapse batch and channels
+            #         collapsed_tensor = tensor.view(tensor.size(0) * tensor.size(1), -1)  # Shape: (batch_size * channels, height * width)
+            
+            #         # Convert the tensor to a NumPy array
+            #         array = collapsed_tensor.numpy()
+                    
+            #         # Write a header for each tensor
+            #         f.write(f"Tensor {idx}:\n")
+                    
+            #         # Save the collapsed tensor to the text file
+            #         np.savetxt(f, array, fmt='%.6f')
+                    
+            #         # Add a newline to separate tensors
+            #         f.write('\n')
+            #print(torch.isnan(x) for x in image['subimages'])
             output = model(image, requires_grad=True)
             if type(output) is tuple:
                 output, attention = output
             else:
                 attention = None 
-            print(attention)
-            print(attention.size())
-            print(f'output: {output}')
+            #print(attention)
+            #print(attention.size())
+            #print(f'output: {output}')
             attention_loss = torch.tensor(0).to(device)
             # print(f'(attention loss): {attention_loss}')
             if attention is not None and alpha is not None:
                 # check the aoi needs to be flattened
-                if len(aoi_heatmap.shape) == 3:  # batch, height, width
+                if aoi_heatmap and len(aoi_heatmap.shape) == 3:  # batch, height, width
                     aoi_heatmap = torch.flatten(aoi_heatmap, 1, 2)
                 attention = torch.sum(attention, dim=1)  # summation across the heads
                 attention /= torch.sum(attention, dim=1, keepdim=True)
@@ -289,11 +308,11 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
                 if dist == 'cross-entropy':
                     loss = nn.CrossEntropyLoss(weight = class_weights)
                     #print(f' aoi_heatmap.to(device)aoi_heatmap.to(device) {aoi_heatmap.to(device)}')
-                    #attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
-                    target = label_onehot_encoded.to(device)
-                    attention_loss = .01 * loss(output, target)
-                    print(f'type attention loss {type(attention_loss)}')
-
+                    #attention_loss = .1 * F.cross_entropy(attention, aoi_heatmap.to(device))
+                    #target = label_onehot_encoded.to(device)
+                    #attention_loss = .01 * loss(output, target)
+                    #print(f'type attention loss {type(attention_loss)}')
+                    attention_loss = 0
                     #print(f' does alpha affect aloss {attention_loss}')
                 elif dist == 'Wasserstein':
                     attention_loss = alpha * torch_wasserstein_loss(attention, aoi_heatmap.to(device))
@@ -304,15 +323,17 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
             #print(f'y tensor {y_tensor}')
             # print(f'class weights: {class_weights}')
             if class_weights is not None:
+             #   print(f' output {output}')
+             #   print(f' output{y_tensor}')
                 classification_loss = criterion(weight=class_weights)(output, y_tensor)
                 print(f'classification loss {classification_loss}')
-                print(type(classification_loss))
+            #    print(type(classification_loss))
 
                 # print(f'classification loss {classification_loss}')
             else:
                 classification_loss = criterion()(output, y_tensor)
                 print(f'classification loss {classification_loss}')
-                print(type(classification_loss))
+                #print(type(classification_loss))
 
 
             if l2_weight:
@@ -321,22 +342,18 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
             else:
                 loss = classification_loss + attention_loss
                 print(loss)
-                print(type(loss))
+                #print(type(loss))
 
         # update the weights #################################################################
         # a = [x.attn.attention.qkv.weight.grad for _, x in model.vision_transformer.blocks._modules.items()]
         # a = [x._modules['0']._modules['fn'].to_qkv.weight.grad for _, x in model.ViT.transformer.layers._modules.items()]
         if mode == 'train':
-            print("lossing backwards")
-            #loss.backward()
+         #   print("lossing backwards")
+            loss.backward()
 
-            with autograd.detect_anomaly():
-                try:
-                    loss.backward()
-                except Exception as e:
-                    print(f"Bad gradient encountered: {e}")
+                #    loss.backward()
             grad_norms.append([torch.mean(param.grad.norm()).item() for _, param in model.named_parameters() if param.grad is not None])
-            print(grad_norms)
+            #print(grad_norms)
             # nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
             nn.utils.clip_grad_value_(model.parameters(), clip_value=1.0)
             bad_grads = {}
@@ -362,7 +379,7 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
         total_samples += (predictions.size(0))
         total_loss += loss.item() * len(batch[0])
         total_correct += torch.sum(predictions == label_encoded.to(device)).item()
-        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss {attention_loss.item():.8f}')
+        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss ')#{attention_loss.item():.8f}
 
     all_postlogits = np.concatenate(all_postlogits, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
@@ -379,6 +396,7 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
 
 def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weights, model_config_string, criterion, epoch_i,
                       dist=None, alpha=None, l2_weight=None, optimizer=None, *args, **kwargs):
+    #torch.autograd.set_detect_anomaly(True)
     if mode == 'train':
         model.train()
     elif mode == 'val':
@@ -405,72 +423,122 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, *_ = batch
         # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
         image = any_image_to_tensor(image, device)
+        #print(f' label_encoded {label_encoded}')
+        print(f' label_onehot_encoded {label_onehot_encoded}')
+        # print(type(image))
+        for key, value in image.items():
+            pass
+            # print(key)
+            # print(type(value))
+        subimages = image['subimages']
+        masks = image['masks']
+        # print(subimages)
+        # for subimage in subimages:
+        #     print(type(subimage))
+        #     # print(subimage.size())
+        #     if isinstance(subimage, np.ndarray):
+        #         print(subimage.shape)
+        # # print(masks)
+        # for mask in masks:
+        #     print(type(mask))
+        #     # print(mask.size())
+        #     if isinstance(mask, np.ndarray):
+        #         print(mask.shape)
+
 
 
         # the forward pass ###################################################################
         if mode == 'train':
             optimizer.zero_grad()
         with context_manager:
+            ## print(model)
+            #print(len(image))
             # gradcam = get_gradcam(model, image, target=label_onehot_encoded.to(device))
-            output = model(image)
+            #print(image['subimages'][0].size())
+            #print(f'image {image}')
+            #print(image['subimages'])
 
+            output = model(image, requires_grad=True)
             if type(output) is tuple:
                 output, attention = output
             else:
-                attention = None
-
+                attention = None 
+            # print(attention)
+            # print(attention.size())
+            # print(f'output: {output}')
             attention_loss = torch.tensor(0).to(device)
+            # print(f'(attention loss): {attention_loss}')
             if attention is not None and alpha is not None:
                 # check the aoi needs to be flattened
                 if len(aoi_heatmap.shape) == 3:  # batch, height, width
                     aoi_heatmap = torch.flatten(aoi_heatmap, 1, 2)
                 attention = torch.sum(attention, dim=1)  # summation across the heads
-                attention /= torch.sum(attention, dim=1, keepdim=True)  # normalize the attention output, so that they sum to 1
+                attention /= torch.sum(attention, dim=1, keepdim=True)
+                print(f'attention in proper place {attention}')
+                  # normalize the attention output, so that they sum to 1
                 if dist == 'cross-entropy':
-                    attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
+                    loss = nn.CrossEntropyLoss(weight = class_weights)
+                    #print(f' aoi_heatmap.to(device)aoi_heatmap.to(device) {aoi_heatmap.to(device)}')
+                    #attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
+                    target = label_onehot_encoded.to(device)
+                    attention_loss = .01 * loss(output, target)
+                    # print(f'type attention loss {type(attention_loss)}')
+
+                    #print(f' does alpha affect aloss {attention_loss}')
                 elif dist == 'Wasserstein':
                     attention_loss = alpha * torch_wasserstein_loss(attention, aoi_heatmap.to(device))
                 else:
                     raise NotImplementedError(f" Loss type {dist} is not implemented")
-
+            # print(f'(attention loss): {attention_loss}')
             y_tensor = label_onehot_encoded.to(device)
+            #print(f'y tensor {y_tensor}')
+            # print(f'class weights: {class_weights}')
             if class_weights is not None:
                 classification_loss = criterion(weight=class_weights)(output, y_tensor)
+                print(f'classification loss {classification_loss}')
+                # print(type(classification_loss))
+
+                # print(f'classification loss {classification_loss}')
             else:
                 classification_loss = criterion()(output, y_tensor)
+                print(f'classification loss {classification_loss}')
+                # print(type(classification_loss))
+
 
             if l2_weight:
                 l2_penalty = l2_weight * sum([(p ** 2).sum() for p in model.parameters()])
                 loss = classification_loss + attention_loss + l2_penalty
             else:
                 loss = classification_loss + attention_loss
-
+                print(loss)
+                # print(type(loss))
 
         # update the weights #################################################################
         # a = [x.attn.attention.qkv.weight.grad for _, x in model.vision_transformer.blocks._modules.items()]
         # a = [x._modules['0']._modules['fn'].to_qkv.weight.grad for _, x in model.ViT.transformer.layers._modules.items()]
         if mode == 'train':
+            # print("lossing backwards")
+            #loss.backward()
             loss.backward()
-
             # with autograd.detect_anomaly():
             #     try:
             #         loss.backward()
             #     except Exception as e:
-            #         # print(f"Bad gradient encountered: {e}")
+            #         print(f"Bad gradient encountered: {e}")
             grad_norms.append([torch.mean(param.grad.norm()).item() for _, param in model.named_parameters() if param.grad is not None])
-
+            #print(grad_norms)
             # nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
             nn.utils.clip_grad_value_(model.parameters(), clip_value=1.0)
             bad_grads = {}
 
             for name, param in model.named_parameters():
                 if param.grad is not None and is_bad_grad(param.grad):
-                    print(f"Find nan in param.grad in module: {name}")
+                    # print(f"Find nan in param.grad in module: {name}")
                     bad_grads[name] = param.grad
-
+                    print(bad_grads[name])
                 # check if weights are too large
                 if torch.any(torch.abs(param) > 1000):
-                    print(f"Find large weights in module: {name}")
+                    #print(f"Find large weights in module: {name}")
                     bad_grads[name] = param.grad
 
             optimizer.step()
@@ -480,15 +548,18 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         postlogits = F.softmax(output, dim=1)
         all_postlogits.append(postlogits.detach().cpu().numpy())
         all_labels.append(label_encoded)
-
         _, predictions = torch.max(postlogits, 1)
         total_samples += (predictions.size(0))
         total_loss += loss.item() * len(batch[0])
         total_correct += torch.sum(predictions == label_encoded.to(device)).item()
-        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss {attention_loss.item():.8f}')
+        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss ')#{attention_loss.item():.8f}
 
     all_postlogits = np.concatenate(all_postlogits, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
+    predicted_labels = (all_postlogits[:, 1] >= .5).astype('int')
+    #print(predicted_labels)
+    #print(all_labels)
+
     auc, precision, recall, f1 = compute_metrics(all_labels, all_postlogits)
 
     epoch_loss = total_loss / total_samples

@@ -106,7 +106,7 @@ def pad_image(image, max_n_patches, patch_size):
     return image_padded, patch_mask
 
 
-def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_mask_threshold=1, *args, **kwargs):
+def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_mask_threshold=.95, *args, **kwargs):
     """
     sub image pad to max size
         'En-face_52.0micrometer_Slab_(Retina_View)':
@@ -141,10 +141,10 @@ def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_ma
 
         print(f"resizing sub-images {s_image_name}, {i + 1}/{len(sub_image_names)}, they will be cropped&padded to {max_size}, with {max_n_patches} patches ({patch_size=})")
         # find the max patchifiable size, round down
-
+        i=0
         for image_name, (s_image, position) in sub_images.items():
             temp = crop_image(s_image, patch_size)
-
+            #print(i)
             cropped_image_data[image_name]['sub_images'][s_image_name]['sub_image_cropped_padded'], patch_mask = pad_image(temp, max_n_patches, patch_size)
             cropped_image_data[image_name]['sub_images'][s_image_name]['position'] = position
 
@@ -152,7 +152,14 @@ def preprocess_subimages(cropped_image_data, patch_size=(32, 32), white_patch_ma
             white_mask_patches = white_mask.reshape(white_mask.shape[0] // patch_size[0], patch_size[0], white_mask.shape[1] // patch_size[1], patch_size[1])
             white_mask_patches = white_mask_patches.transpose(0, 2, 1, 3)
             white_mask_patches = white_mask_patches.reshape(-1, *patch_size)
-            white_mask_patches = [(True if np.mean(patch) > white_patch_mask_threshold else False) for patch in white_mask_patches]
+            #print(white_mask_patches)
+            #white_mask_patches = [(True if np.mean(patch) > white_patch_mask_threshold else False) for patch in white_mask_patches]
+            white_mask_patches = [(True) for patch in white_mask_patches]
+            #print(white_mask_patches)
+            if (i ==0):
+                #print(white_mask_patches)
+                i=i+1
+
             white_mask_patches = np.reshape(white_mask_patches, patch_mask.shape)
             patch_mask = np.logical_and(patch_mask, white_mask_patches)
             # add white and black masks
@@ -343,8 +350,8 @@ def remap_subimage_aoi(subimage_patch_aoi, subimage_masks, subimages, subimage_p
         sub_image_aois.append(s_aoi)
     return aoi_recovered, sub_image_aois
 
-def remap_subimage_attention_rolls(rolls, subimage_masks, subsubimage_positions, original_image_size):
-    print("remapping subimage attention rolls")
+# def remap_subimage_attention_rolls(rolls, subimage_masks, subsubimage_positions, original_image_size):
+#     print("remapping subimage attention rolls")
 
 def apply_patch_mask(image, patch_mask, patch_size):
     original_mask = np.kron(patch_mask, np.ones(patch_size, dtype=bool))[:image.shape[0], :image.shape[1]]  # cut in case image is bigger than the mask

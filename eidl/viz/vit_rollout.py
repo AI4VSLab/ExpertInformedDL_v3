@@ -132,12 +132,12 @@ class VITAttentionRollout:
     def get_attention(self, module, input, output):
         if isinstance(module, ExpertAttentionViTAttention):
             attention_output = output[1]
-            print(attention_output)
+            #print(attention_output)
         else:
             attention_output = output
-            print(attention_output)
+            #print(attention_output)
 
-        print(attention_output)
+        #print(attention_output)
         self.attentions.append(attention_output.detach())
 
     def __call__(self, depth, in_data, *args, **kwargs):

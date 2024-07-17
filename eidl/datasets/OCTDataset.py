@@ -79,7 +79,10 @@ class OCTDatasetV3(Dataset):
         """
         print("in create aoi")
         print(f'len self trial samples {len(self.trial_samples)}')
+        
         for i in range(len(self.trial_samples)):
+            if True:
+                break
             fixation_sequence = self.trial_samples[i]['fix_seq']
             if self.has_subimages():
                 image_size = self.trial_samples[i]['original_image'].shape[:-1]
@@ -230,7 +233,7 @@ def get_oct_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, 
 
     # z-normalize the images
     # the z-normal should be computed from the 177 images, not from the 455 trials
-    print([x['image'] for k, x in image_data_dict.items()])
+    #print([x['image'] for k, x in image_data_dict.items()])
     image_data = np.array([x['image'] for k, x in image_data_dict.items()])
     image_means = np.mean(image_data, axis=(0, 1, 2))
     image_stds = np.std(image_data, axis=(0, 1, 2))

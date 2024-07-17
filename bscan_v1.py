@@ -14,10 +14,11 @@ import torch
 from torch import optim, nn
 from torch.utils.data import DataLoader
 
+from eidl.datasets.BscanDataset import get_bscan_test_train_val_folds
 from eidl.datasets.OCTDataset import get_oct_test_train_val_folds
 from eidl.utils.iter_utils import collate_fn
 from eidl.utils.model_utils import get_model
-from eidl.utils.training_utils import train_oct_model, get_class_weight
+from eidl.utils.training_utils import train_oct_model, get_class_weight, train_bscan_model
 
 # User parameters ##################################################################################
 
@@ -27,7 +28,7 @@ from eidl.utils.training_utils import train_oct_model, get_class_weight
 # data_root = r'C:\Users\apoca_vpmhq3c\Dropbox\ExpertViT\Datasets\OCTData\oct_v2'
 data_root = ''
 
-torch.autograd.set_detect_anomaly(True)
+#torch.autograd.set_detect_anomaly(True)
 
 # cropped_image_data_path = r'C:\Dropbox\ExpertViT\Datasets\OCTData\oct_v2\oct_reports_info_repaired.p'
 cropped_image_data_path = '/data/kuang/David/ExpertInformedDL_v3/bscan_v2.p'
@@ -47,7 +48,7 @@ use_saved_folds = None
 n_jobs = 5  # n jobs for loading data from hard drive and z-norming the subimages
 
 # generic training parameters ##################################
-epochs = 100
+epochs = 10
 random_seed = 42
 batch_size = 2
 folds = 10
@@ -66,7 +67,7 @@ depths = 1,
 ################################################################
 # alphas = 0.0, 1e-2, 0.1, 0.25, 0.5, 0.75, 1.0
 # alphas = 0., 1e-2, 0.1, 0.5
-alphas = 0.25, 0.75, 1.0, 1.5
+alphas = 0.25
 
 ################################################################
 # lrs = 1e-2, 1e-3, 1e-4
@@ -133,13 +134,13 @@ if __name__ == '__main__':
         results_dir = use_saved_folds
     else:
         print("Creating data set")
-        folds, test_dataset, image_stats = get_oct_test_train_val_folds(data_root, image_size=image_size, n_folds=folds, n_jobs=n_jobs,
+        folds, test_dataset, image_stats = get_bscan_test_train_val_folds(data_root, image_size=image_size, n_folds=folds, n_jobs=n_jobs,
                                                                                     cropped_image_data_path=cropped_image_data_path,
                                                                                     patch_size=patch_size, gaussian_smear_sigma=gaussian_smear_sigma,
                                                                                     test_size=test_size, val_size=val_size)
         now = datetime.now()
         dt_string = now.strftime("%m_%d_%Y_%H_%M_%S")
-        results_dir = f"{results_dir}-{dt_string}"
+        results_dir = f"{results_dir}-bscan-{dt_string}"
         if not os.path.isdir(results_dir):
             os.mkdir(results_dir)
             print(f"Results will be save to {results_dir}")
@@ -209,12 +210,12 @@ if __name__ == '__main__':
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
             valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
-            train_loss_list, train_acc_list, valid_loss_list, valid_acc_list = train_oct_model(
+            train_loss_list, train_acc_list, valid_loss_list, valid_acc_list = train_bscan_model(
                 model, f"{model_config_string}_fold_{fold_i}", train_loader, valid_loader, results_dir=results_dir, optimizer=optimizer, num_epochs=epochs,
                 alpha=alpha, dist=aoi_loss_dist, l2_weight=l2_weight, class_weights=class_weights)
 
     # viz_oct_results(results_dir, test_image_path, test_image_main, batch_size, image_size, n_jobs=n_jobs)
 
-    r
+    
 #results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, viz_val_acc=True, plot_format='individual', num_plot=14,
     #   rollout_transparency=0.75, figure_dir=None
