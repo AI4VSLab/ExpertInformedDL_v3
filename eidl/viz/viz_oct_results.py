@@ -17,7 +17,7 @@ from eidl.utils.image_utils import process_aoi, process_grad_cam
 from eidl.utils.iter_utils import collate_fn
 from eidl.utils.model_utils import parse_model_parameter, get_best_model, parse_training_results
 from eidl.utils.torch_utils import any_image_to_tensor
-from eidl.utils.training_utils import run_one_epoch, run_one_epoch_oct
+from eidl.utils.training_utils import run_one_epoch, run_one_epoch_oct, run_one_epoch_bscan
 from eidl.viz.vit_rollout import VITAttentionRollout
 
 from eidl.viz.viz_utils import plt2arr, plot_train_history, plot_subimage_rolls, plot_image_attention, \
@@ -147,7 +147,7 @@ def viz_oct_results(results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, vi
                         print(f"Test dataset size: {len(valid_test_combined_dataset)} after combining with validation set, with {np.sum(valid_test_combined_dataset_labels =='G')} glaucoma and {np.sum(valid_test_combined_dataset_labels =='S')} healthy samples")
                         test_loader = DataLoader(valid_test_combined_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)  # one image at a time
                         test_loss, test_acc, test_auc, test_precision, test_recall, test_f1 = \
-                            run_one_epoch_oct('val', results['model'], test_loader, device, None, 'test', nn.CrossEntropyLoss,0)
+                            run_one_epoch_bscan('val', results['model'], test_loader, device, None, 'test', nn.CrossEntropyLoss,0)
 
                         test_acc_alpha.append(test_acc)
                         test_auc_alpha.append(test_auc)
