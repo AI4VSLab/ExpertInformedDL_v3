@@ -252,13 +252,7 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
         image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, *_ = batch
         # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
         image = any_image_to_tensor(image, device)
-        #print(f' label_encoded {label_encoded}')
-        print(f' label_onehot_encoded {label_onehot_encoded}')
-        # print(type(image))
-        for key, value in image.items():
-            pass
-            # print(key)
-            # print(type(value))
+
         subimages = image['subimages']
         #masks = image['masks']
         # # print(subimages)
@@ -440,9 +434,6 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, *_ = batch
         # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
         image = any_image_to_tensor(image, device)
-        print(f' device {device}')
-        print(f' label_onehot_encoded {label_onehot_encoded}')
-
         # the forward pass ###################################################################
         if mode == 'train':
             optimizer.zero_grad()
