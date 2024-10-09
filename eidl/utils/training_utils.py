@@ -5,6 +5,7 @@ import pickle
 
 import numpy as np
 import torch
+from einops import rearrange
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, roc_curve, auc
 from tqdm import tqdm
@@ -440,87 +441,45 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
         image = any_image_to_tensor(image, device)
         print(f' device {device}')
-        #print(f' label_encoded {label_encoded}')
         print(f' label_onehot_encoded {label_onehot_encoded}')
-        # print(type(image))
-        for key, value in image.items():
-            pass
-            # print(key)
-            # print(type(value))
-        subimages = image['subimages']
-        masks = image['masks']
-        # print(subimages)
-        # for subimage in subimages:
-        #     print(type(subimage))
-        #     # print(subimage.size())
-        #     if isinstance(subimage, np.ndarray):
-        #         print(subimage.shape)
-        # # print(masks)
-        # for mask in masks:
-        #     print(type(mask))
-        #     # print(mask.size())
-        #     if isinstance(mask, np.ndarray):
-        #         print(mask.shape)
-
-
 
         # the forward pass ###################################################################
         if mode == 'train':
             optimizer.zero_grad()
         with context_manager:
-            ## print(model)
-            #print(len(image))
-            # gradcam = get_gradcam(model, image, target=label_onehot_encoded.to(device))
-            #print(image['subimages'][0].size())
-            #print(f'image {image}')
-            #print(image['subimages'])
-
             output = model(image, requires_grad=True)
             if type(output) is tuple:
                 output, attention = output
             else:
                 attention = None 
-            # print(attention)
-            # print(attention.size())
-            # print(f'output: {output}')
+
             attention_loss = torch.tensor(0).to(device)
-            # print(f'(attention loss): {attention_loss}')
-            if attention is not None and alpha is not None:
+            if attention is not None and alpha is not None and aoi_heatmap is not None:
                 # check the aoi needs to be flattened
                 if len(aoi_heatmap.shape) == 3:  # batch, height, width
                     aoi_heatmap = torch.flatten(aoi_heatmap, 1, 2)
+                elif len(aoi_heatmap.shape) == 4:  # batch, layers of bscan, height, width
+                    aoi_heatmap = rearrange(aoi_heatmap, 'b l h w -> b (l h w)')
                 attention = torch.sum(attention, dim=1)  # summation across the heads
                 attention /= torch.sum(attention, dim=1, keepdim=True)
                 print(f'attention in proper place {attention}')
                   # normalize the attention output, so that they sum to 1
                 if dist == 'cross-entropy':
-                    loss = nn.CrossEntropyLoss(weight = class_weights)
-                    #print(f' aoi_heatmap.to(device)aoi_heatmap.to(device) {aoi_heatmap.to(device)}')
-                    #attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
-                    target = label_onehot_encoded.to(device)
-                    attention_loss = .01 * loss(output, target)
-                    # print(f'type attention loss {type(attention_loss)}')
-
-                    #print(f' does alpha affect aloss {attention_loss}')
+                    # loss = nn.CrossEntropyLoss(weight=class_weights)
+                    attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
+                    # target = label_onehot_encoded.to(device)
+                    # attention_loss = .01 * loss(output, target)
                 elif dist == 'Wasserstein':
                     attention_loss = alpha * torch_wasserstein_loss(attention, aoi_heatmap.to(device))
                 else:
                     raise NotImplementedError(f" Loss type {dist} is not implemented")
-            # print(f'(attention loss): {attention_loss}')
             y_tensor = label_onehot_encoded.to(device)
-            #print(f'y tensor {y_tensor}')
-            # print(f'class weights: {class_weights}')
             if class_weights is not None:
                 classification_loss = criterion(weight=class_weights)(output, y_tensor)
                 print(f'classification loss {classification_loss}')
-                # print(type(classification_loss))
-
-                # print(f'classification loss {classification_loss}')
             else:
                 classification_loss = criterion()(output, y_tensor)
                 print(f'classification loss {classification_loss}')
-                # print(type(classification_loss))
-
 
             if l2_weight:
                 l2_penalty = l2_weight * sum([(p ** 2).sum() for p in model.parameters()])
