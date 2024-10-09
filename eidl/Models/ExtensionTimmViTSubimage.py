@@ -56,40 +56,23 @@ class ExtensionTimmViTSubimage(nn.Module):
         #self.patch_width = 16
     def forward_features(self, img, collapse_attention_matrix=True, *args, **kwargs):
         subimage_xs = [self.vision_transformer.patch_embed(x) for x in img['subimages']]
-        subimage_xs = [rearrange(x, 'b h w d -> b (h w) d') for x in subimage_xs]
-        #print(f'in extension timm vit subimage, subimage_xs is {subimage_xs}')
-        x = torch.cat(subimage_xs, dim=1)
-        # concate the masks
-      #  print(f'in extension timm vit subimage, x is {x}')
-
+        subimage_xs = [rearrange(x, 'b h w d -> b (h w) d') for x in subimage_xs]  # h and w are number of patches
+        x = torch.cat(subimage_xs, dim=1)  # concatenate the subimages' patches
         # recover a dummy w dimension for the _pos_embed in timm
         x = rearrange(x, 'b (h w) d -> b h w d', w=1)
-     #   print(f'in extension timm vit subimage, x is {x}')
 
         x = self.vision_transformer._pos_embed(x)  # this will also add the cls token
         x = self.vision_transformer.norm_pre(x)
 
-    #    print(f'in extension timm vit subimage, x is {x}')
-    #    print(f' x size {x.size()}')
-
-        # if self.grad_checkpointing and not torch.jit.is_scripting():
-        #     x = checkpoint_seq(self.blocks, x)
-        # else:
-        masks = torch.cat([rearrange(x, 'b h w -> b (h w)') for x in img['masks']], dim=1)
-    #   print(f'in extension timm vit subimage, masks is {masks}')
-
-        masks = F.pad(masks, (x.shape[-2] - masks.shape[-1], 0), value=True)  # class token is always valid
-    #    print(f'in extension timm vit subimage, masks is {masks}')
-
-        masks = torch.einsum('bi,bj->bij', masks, masks)
-    #    print(f'in extension timm vit subimage, masks is {masks}')
-
-        # repeat for the heads
-        masks = repeat(masks, 'b i j -> b h i j', h=self.num_heads)
-       # print(f'in extension timm vit subimage, masks is {masks}')
-      #  print(f' mask size {masks.size()}')
-        x = self.vision_transformer.blocks({'data': x, 'mask': masks}) #'mask': masks
-    #    print(f'in extension timm vit subimage, x is {x}')
+        if 'masks' in img:
+            masks = torch.cat([rearrange(x, 'b h w -> b (h w)') for x in img['masks']], dim=1)
+            masks = F.pad(masks, (x.shape[-2] - masks.shape[-1], 0), value=True)  # class token is always valid
+            masks = torch.einsum('bi,bj->bij', masks, masks)
+            # repeat for the heads
+            masks = repeat(masks, 'b i j -> b h i j', h=self.num_heads)
+        else:
+            masks = None
+        x = self.vision_transformer.blocks({'data': x, 'mask': masks})
 
         if type(x) is tuple:
             x, attention = x
