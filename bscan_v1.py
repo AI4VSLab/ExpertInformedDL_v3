@@ -1,57 +1,49 @@
-"""
-This file implements ViT using the cropped images
+import os
 
-
-"""
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 import itertools
-import os
 import pickle
 from datetime import datetime
 
 import numpy as np
 import torch
 from torch import optim, nn
-from torch.utils.data import DataLoad
+from torch.utils.data import DataLoader
 
 from eidl.datasets.BscanDataset import get_bscan_test_train_val_folds
-from eidl.datasets.OCTDataset import get_oct_test_train_val_folds
-from eidl.utils.iter_utils import collate_fn
+from eidl.utils.iter_utils import collate_fn, collate_fn_bscan
 from eidl.utils.model_utils import get_model, get_subimage_model2
 from eidl.utils.training_utils import train_oct_model, get_class_weight, train_bscan_model
 
 
-get_subimage_model2()
+# get_subimage_model2()
 # User parameters ##################################################################################
 
 # Change the following to the file path on your system #########
-# data_root = 'D:/Dropbox/Dropbox/ExpertViT/Datasets/OCTData/oct_v2'
-# data_root = r'C:\Dropbox\ExpertViT\Datasets\OCTData\oct_v2'
-# data_root = r'C:\Users\apoca_vpmhq3c\Dropbox\ExpertViT\Datasets\OCTData\oct_v2'
-data_root = ''
+data_root = ''  # this path is atm not used, the image data is loaded from the cropped_image_data_path
 
 #torch.autograd.set_detect_anomaly(True)
+cropped_image_data_path = '/data/kuang/David/ExpertInformedDL_v3/bscan_v2.p'  # this file is loaded in BscanDataset.get_bscan_data
+all_karen_tsv_fixation_path = '/data/leo/data/BScan/ExpertEyetracking/all_karen.tsv'  # this file is used to fix the fixation points
 
-# cropped_image_data_path = r'C:\Dropbox\ExpertViT\Datasets\OCTData\oct_v2\oct_reports_info_repaired.p'
-cropped_image_data_path = '/data/kuang/David/ExpertInformedDL_v3/bscan_v2.p'
+results_dir = '/data/leo/temp/bscan'
+dt_string = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
+results_dir = os.path.join(results_dir, dt_string)
+os.mkdir(results_dir)
+print(f"Results will be save to {results_dir}")
 
-# results_dir = 'results'
-# use_saved_folds = 'results-01_07_2024_10_53_56'
-
-results_dir = '/data/kuang/David/ExpertInformedDL_v3/temp/results'
-use_saved_folds = None
-# use_saved_folds = '../temp/results-repaired-base-vit-10folds'
-# use_saved_folds = '../temp/results-repaired-pretrained-vit-10folds'
-# use_saved_folds = '../temp/results-repaired-resnet'
-# use_saved_folds = '../temp/results-repaired-vgg'
-# use_saved_folds = '../temp/results-repaired-inception'
-
+use_saved_folds = '/data/leo/temp/bscan/vit'  # set this to a path to use the saved folds, set to None to create new folds
 
 n_jobs = 5  # n jobs for loading data from hard drive and z-norming the subimages
 
 # generic training parameters ##################################
 epochs = 100
 random_seed = 42
+# IMPORTANT: this must be one for BScan at present, because some of the images doesn't have fixation data.
+# So we don't have their AOIs.
+# When creating a batch, if some images have AOIs and some don't, we can't concatenate them to create a single tensor.
+# So we have to set batch_size to 1.
 batch_size = 1
 folds = 10
 
@@ -61,7 +53,7 @@ val_size = 0.14
 l2_weight = 1e-6
 
 # grid search hyper-parameters ##################################
-################################################################
+
 # depths = 1, 3
 # depths = 12,
 depths = 1,
@@ -69,7 +61,7 @@ depths = 1,
 ################################################################
 # alphas = 0.0, 1e-2, 0.1, 0.25, 0.5, 0.75, 1.0
 # alphas = 0., 1e-2, 0.1, 0.5
-alphas = 0.25,
+alphas = 1e-2,
 
 ################################################################
 # lrs = 1e-2, 1e-3, 1e-4
@@ -135,25 +127,18 @@ if __name__ == '__main__':
         test_dataset = pickle.load(open(os.path.join(use_saved_folds, 'test_dataset.p'), 'rb'))
         image_stats = pickle.load(open(os.path.join(use_saved_folds, 'image_stats.p'), 'rb'))
         test_dataset.compound_label_encoder = pickle.load(open(os.path.join(use_saved_folds, 'compound_label_encoder.p'), 'rb'))
-        results_dir = use_saved_folds
     else:
         print("Creating data set")
         folds, test_dataset, image_stats = get_bscan_test_train_val_folds(data_root, image_size=image_size, n_folds=folds, n_jobs=n_jobs,
                                                                                     cropped_image_data_path=cropped_image_data_path,
+                                                                                    all_karen_tsv_fixation_path=all_karen_tsv_fixation_path,
                                                                                     patch_size=patch_size, gaussian_smear_sigma=gaussian_smear_sigma,
                                                                                     test_size=test_size, val_size=val_size)
-        now = datetime.now()
-        dt_string = now.strftime("%m_%d_%Y_%H_%M_%S")
-        results_dir = f"{results_dir}-bscan-{dt_string}"
-        if not os.path.isdir(results_dir):
-            os.mkdir(results_dir)
-            print(f"Results will be save to {results_dir}")
-        else:
-            print(f"Results exist in {results_dir}, overwritting the results")
-        # pickle.dump(folds, open(os.path.join(results_dir, 'folds.p'), 'wb'))
-        # pickle.dump(test_dataset, open(os.path.join(results_dir, 'test_dataset.p'), 'wb'))
-        # pickle.dump(image_stats, open(os.path.join(results_dir, 'image_stats.p'), 'wb'))
-        # pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(results_dir, 'compound_label_encoder.p'), 'wb'))
+        print(f"Saving folds to {results_dir}, you may set use_saved_folds to this path to use them in the future")
+        pickle.dump(folds, open(os.path.join(results_dir, 'folds.p'), 'wb'))
+        pickle.dump(test_dataset, open(os.path.join(results_dir, 'test_dataset.p'), 'wb'))
+        pickle.dump(image_stats, open(os.path.join(results_dir, 'image_stats.p'), 'wb'))
+        pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(results_dir, 'compound_label_encoder.p'), 'wb'))
 
     # check there's no data leak between the train and valid in the folds
     for fold_i, (train_trial_dataset, valid_dataset, train_unique_img_dataset) in enumerate(folds):
@@ -191,8 +176,8 @@ if __name__ == '__main__':
                 train_dataset = train_unique_img_dataset
             else:
                 train_dataset = train_trial_dataset
-            train_dataset.create_aoi(use_subimages=True)
-            valid_dataset.create_aoi(use_subimages=True)
+            # train_dataset.create_aoi(use_subimages=True)
+            # valid_dataset.create_aoi(use_subimages=True)
 
             class_weights = get_class_weight(train_dataset.labels_encoded, 2).to(device)
 
@@ -211,8 +196,8 @@ if __name__ == '__main__':
 
             criterion = nn.CrossEntropyLoss()
 
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-            valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_bscan)
+            valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_bscan)
 
             train_loss_list, train_acc_list, valid_loss_list, valid_acc_list = train_bscan_model(
                 model, f"{model_config_string}_fold_{fold_i}", train_loader, valid_loader, results_dir=results_dir, optimizer=optimizer, num_epochs=epochs,
