@@ -12,14 +12,28 @@ def reverse_tuple(t):
         return(t[-1],)+reverse_tuple(t[:-1])
 
 
+def collate_fn_bscan(batch):
+    # label = torch.LongTensor([item['label'] for item in batch])
+    label = torch.IntTensor([item['label_encoded'] for item in batch])
+    label_encoded = torch.FloatTensor([item['label_onehot_encoded'] for item in batch])
+    fixation_sequence = [[torch.FloatTensor(x) for x in item['fix_seq']] for item in batch]
+    aoi_heatmap = torch.stack([torch.FloatTensor(item['aoi']) for item in batch], dim=0) if 'aoi' in batch[0].keys() else None
+    image_resized = torch.stack([torch.FloatTensor(item['image']) for item in batch], dim=0)
+    # image_original = torch.stack([torch.FloatTensor(item['original_image']) for item in batch], dim=0)
+    image_original = [torch.FloatTensor(item['original_image']) for item in batch]
+
+    if 'sub_images' in batch[0].keys():
+        img, subimage_positions = collate_subimages(batch)
+        img.pop('masks')  # bscan does not use masks
+        return img, label, label_encoded, fixation_sequence, aoi_heatmap, image_resized, image_original, subimage_positions
+    else:
+        img = torch.stack([torch.FloatTensor(item['image_z_normed']) for item in batch], dim=0)
+        return img, label, label_encoded, fixation_sequence, aoi_heatmap, image_resized, image_original
+
 def collate_fn(batch):
     # label = torch.LongTensor([item['label'] for item in batch])
     label = torch.IntTensor([item['label_encoded'] for item in batch])
     label_encoded = torch.FloatTensor([item['label_onehot_encoded'] for item in batch])
-    # if np.any(np.array([item['seq'] for item in batch]) == None):
-    #     fixation_sequence = None
-    #     aoi_heatmap = None
-    # else:
     fixation_sequence = [torch.FloatTensor(item['fix_seq']) for item in batch]
     aoi_heatmap = torch.stack([torch.FloatTensor(item['aoi']) for item in batch], dim=0) if 'aoi' in batch[0].keys() else None
     image_resized = torch.stack([torch.FloatTensor(item['image']) for item in batch], dim=0)
