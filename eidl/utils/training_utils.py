@@ -528,13 +528,10 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         total_samples += (predictions.size(0))
         total_loss += loss.item() * len(batch[0])
         total_correct += torch.sum(predictions == label_encoded.to(device)).item()
-        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss ')#{attention_loss.item():.8f}
+        pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss #{attention_loss.item():.8f}')
 
     all_postlogits = np.concatenate(all_postlogits, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
-    predicted_labels = (all_postlogits[:, 1] >= .5).astype('int')
-    #print(predicted_labels)
-    #print(all_labels)
 
     auc, precision, recall, f1 = compute_metrics(all_labels, all_postlogits)
     
