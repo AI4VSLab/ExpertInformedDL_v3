@@ -134,11 +134,11 @@ if __name__ == '__main__':
                                                                                     all_karen_tsv_fixation_path=all_karen_tsv_fixation_path,
                                                                                     patch_size=patch_size, gaussian_smear_sigma=gaussian_smear_sigma,
                                                                                     test_size=test_size, val_size=val_size)
-        print(f"Saving folds to {results_dir}, you may set use_saved_folds to this path to use them in the future")
-        pickle.dump(folds, open(os.path.join(results_dir, 'folds.p'), 'wb'))
-        pickle.dump(test_dataset, open(os.path.join(results_dir, 'test_dataset.p'), 'wb'))
-        pickle.dump(image_stats, open(os.path.join(results_dir, 'image_stats.p'), 'wb'))
-        pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(results_dir, 'compound_label_encoder.p'), 'wb'))
+        print(f"Saving folds to {use_saved_folds}, you may set use_saved_folds to this path to use them in the future")
+        pickle.dump(folds, open(os.path.join(use_saved_folds, 'folds.p'), 'wb'))
+        pickle.dump(test_dataset, open(os.path.join(use_saved_folds, 'test_dataset.p'), 'wb'))
+        pickle.dump(image_stats, open(os.path.join(use_saved_folds, 'image_stats.p'), 'wb'))
+        pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(use_saved_folds, 'compound_label_encoder.p'), 'wb'))
 
     # check there's no data leak between the train and valid in the folds
     for fold_i, (train_trial_dataset, valid_dataset, train_unique_img_dataset) in enumerate(folds):
