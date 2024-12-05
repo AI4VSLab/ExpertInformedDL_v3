@@ -26,14 +26,16 @@ data_root = ''  # this path is atm not used, the image data is loaded from the c
 #torch.autograd.set_detect_anomaly(True)
 cropped_image_data_path = '/data/kuang/David/ExpertInformedDL_v3/bscan_v2.p'  # this file is loaded in BscanDataset.get_bscan_data
 all_karen_tsv_fixation_path = '/data/leo/data/BScan/ExpertEyetracking/all_karen.tsv'  # this file is used to fix the fixation points
+all_fixation_path_gaze = '/data/rishabh/ExpertInformedDL_v3/Gaze/'
+all_fixation_path_cleaned_response = '/data/rishabh/ExpertInformedDL_v3/cleaned_time_converted/'
 
-results_dir = '/data/leo/temp/bscan'
+results_dir = './results'
 dt_string = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
 results_dir = os.path.join(results_dir, dt_string)
-os.mkdir(results_dir)
+os.makedirs(results_dir)
 print(f"Results will be save to {results_dir}")
 
-use_saved_folds = '/data/leo/temp/bscan/vit'  # set this to a path to use the saved folds, set to None to create new folds
+use_saved_folds = None #'/data/rishabh/ExpertInformedDL_v3/folds' # '/data/leo/temp/bscan/vit'  # set this to a path to use the saved folds, set to None to create new folds
 
 n_jobs = 5  # n jobs for loading data from hard drive and z-norming the subimages
 
@@ -132,13 +134,16 @@ if __name__ == '__main__':
         folds, test_dataset, image_stats = get_bscan_test_train_val_folds(data_root, image_size=image_size, n_folds=folds, n_jobs=n_jobs,
                                                                                     cropped_image_data_path=cropped_image_data_path,
                                                                                     all_karen_tsv_fixation_path=all_karen_tsv_fixation_path,
+                                                                                    root_drive_path_gaze=all_fixation_path_gaze,
+                                                                                    root_drive_path_cleaned=all_fixation_path_cleaned_response,
                                                                                     patch_size=patch_size, gaussian_smear_sigma=gaussian_smear_sigma,
                                                                                     test_size=test_size, val_size=val_size)
-        print(f"Saving folds to {use_saved_folds}, you may set use_saved_folds to this path to use them in the future")
-        pickle.dump(folds, open(os.path.join(use_saved_folds, 'folds.p'), 'wb'))
-        pickle.dump(test_dataset, open(os.path.join(use_saved_folds, 'test_dataset.p'), 'wb'))
-        pickle.dump(image_stats, open(os.path.join(use_saved_folds, 'image_stats.p'), 'wb'))
-        pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(use_saved_folds, 'compound_label_encoder.p'), 'wb'))
+        save_folds = '/data/rishabh/ExpertInformedDL_v3/folds'
+        print(f"Saving folds to {save_folds}, you may set use_saved_folds to this path to use them in the future")
+        pickle.dump(folds, open(os.path.join(save_folds, 'folds.p'), 'wb'))
+        pickle.dump(test_dataset, open(os.path.join(save_folds, 'test_dataset.p'), 'wb'))
+        pickle.dump(image_stats, open(os.path.join(save_folds, 'image_stats.p'), 'wb'))
+        pickle.dump(test_dataset.compound_label_encoder, open(os.path.join(save_folds, 'compound_label_encoder.p'), 'wb'))
 
     # check there's no data leak between the train and valid in the folds
     for fold_i, (train_trial_dataset, valid_dataset, train_unique_img_dataset) in enumerate(folds):

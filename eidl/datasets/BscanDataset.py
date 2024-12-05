@@ -12,7 +12,7 @@ from sklearn import preprocessing
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import Dataset
 
-from eidl.utils.bscan_expert_fixations import load_all_karen_fixations
+from eidl.utils.bscan_expert_fixations import load_all_karen_fixations, load_all_fixations
 from eidl.utils.image_utils import generate_image_binary_mask, resize_image, load_bscan_image, get_heatmap
 from eidl.utils.SubimageHandler import SubimageHandler
 
@@ -151,6 +151,9 @@ class BscanDataset(Dataset):
         """Use this function to load all_karen.tsv that contains the experts fixation data on the bscans
         """
 
+    def load_all_fixations(self, data_path1, data_path2):
+        """Use this function to load the new data"""
+
 
 
 def minmax_norm(x):
@@ -167,7 +170,7 @@ def de_z_norm(x, mean, std):
         x[d] = x[d] * std[d] + mean[d]
     return x
 
-def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, all_karen_tsv_fixation_path=None, patch_size=(32, 32), *args, **kwargs):
+def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None, all_karen_tsv_fixation_path=None, root_drive_path_gaze=None, root_drive_path_cleaned=None, patch_size=(32, 32), *args, **kwargs):
     """
     expects two folds in data root:
         reports_cleaned: folds must have the first letter being either S or G (oct_labels)
@@ -256,14 +259,14 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
     image_name_counts = defaultdict(int)
 
     # load gaze sequences
-    if all_karen_tsv_fixation_path is not None:
+    if root_drive_path_cleaned is not None:
         def convert_img_name(input_img_name):
             """takes a image name [nw]\d+ can turns it into (normal|wetAMD)\d+"""
             # assert the input name matches the pattern [nw]\d+
             assert re.match(r'^[nw]\d+$', input_img_name), f"Input image name '{input_img_name}' does not match the pattern '[nw]\\d+'"
             return 'normal' + input_img_name[1:] if input_img_name[0] == 'n' else 'wetAMD' + input_img_name[1:]
 
-        df_combined = load_all_karen_fixations(all_karen_tsv_fixation_path)
+        df_combined = load_all_fixations(root_drive_path_gaze, root_drive_path_cleaned) # load_all_karen_fixations(all_karen_tsv_fixation_path)
         # keep only the rows where the image_name starts with either w or n
         df_filtered = df_combined[df_combined['image_name'].apply(lambda x: x is not None and x[0] in ['w', 'n'])]
         # the image names in df_combined separated for each subimage, e.g., n1_1, n1_2, n1_3, n1_4,...,
@@ -277,7 +280,7 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
         stimulus_width = df_filtered['Presented Media width [px]'].unique()
         stimulus_height = df_filtered['Presented Media height [px]'].unique()
         assert len(stimulus_width) == 1
-        assert len(stimulus_width) == 1
+        assert len(stimulus_height) == 1
         stimulus_width = stimulus_width[0]
         stimulus_height = stimulus_height[0]
 
@@ -286,26 +289,38 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
 
         unique_images = df_filtered['grouped_image_name'].unique()
         for i, image_name in enumerate(unique_images):
-            # iterate over the layers/subimages for this image
+            # Iterate over the layers/subimages for this image
             layers = df_filtered[df_filtered['grouped_image_name'] == image_name]['layer'].unique()
             fixation_sequences = []
             aois = []
-            for layer in layers:
-                # Get the fixation points for the current layer
-                fixations = \
-                df_filtered[(df_filtered['grouped_image_name'] == image_name) & (df_filtered['layer'] == layer)][
-                    ['Fixation point X [DACS px]', 'Fixation point Y [DACS px]']].values
-
-                # Filter out points outside the presented media (within the stimulus dimensions)
-                valid_fixations = fixations[
-                    (fixations[:, 0] >= 0) & (fixations[:, 0] <= stimulus_width) &  # X within width
-                    (fixations[:, 1] >= 0) & (fixations[:, 1] <= stimulus_height)  # Y within height
+            # Ensure the layers are handled consistently (e.g., 1 to 5)
+            max_layers = 5  # change as needed
+            all_layers = range(1, max_layers + 1)  
+            for layer in all_layers:
+                if layer in layers:
+                    # Get the fixation points for the current layer
+                    fixations = df_filtered[
+                        (df_filtered['grouped_image_name'] == image_name) & 
+                        (df_filtered['layer'] == layer)
+                    ][['Fixation point X [DACS px]', 'Fixation point Y [DACS px]']].values
+                    # Filter out points outside the presented media (within the stimulus dimensions)
+                    valid_fixations = fixations[
+                        (fixations[:, 0] >= 0) & (fixations[:, 0] <= stimulus_width) &  # X within width
+                        (fixations[:, 1] >= 0) & (fixations[:, 1] <= stimulus_height)  # Y within height
                     ]
-                # Append the valid fixation points sequence for this layer
-                fixation_sequences.append(valid_fixations)  # this is width, height
-                aoi, xedges, yedges = np.histogram2d(valid_fixations[:, 1],  # change this to height, width to match the image_data_dict's axis
-                                                         valid_fixations[:, 0], bins=(n_patches_height, n_patches_width))
-                aoi = aoi / aoi.sum()
+                    # Append the valid fixation points sequence for this layer
+                    fixation_sequences.append(valid_fixations)  # this is width, height
+                    # Create AOI heatmap
+                    aoi, xedges, yedges = np.histogram2d(
+                        valid_fixations[:, 1],  # change this to height, width to match the image_data_dict's axis
+                        valid_fixations[:, 0], 
+                        bins=(n_patches_height, n_patches_width)
+                    )
+                    aoi = aoi / aoi.sum()  # Normalize
+                else:
+                    # Create a blank AOI array if the layer is missing
+                    fixation_sequences.append(np.array([]))
+                    aoi = np.zeros((n_patches_height, n_patches_width))
                 aois.append(aoi)
             trial_samples.append({**{'name': image_name, 'fix_seq': fixation_sequences, 'aoi': aois}, **image_data_dict[image_name]})
 
