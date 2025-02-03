@@ -55,16 +55,17 @@ class ExtensionTimmViTSubimage(nn.Module):
         self.patch_width = self.vision_transformer.patch_embed.patch_size[1]
         #self.patch_width = 16
     def forward_features(self, img, collapse_attention_matrix=True, *args, **kwargs):
-        subimage_xs = [self.vision_transformer.patch_embed(x) for x in img['subimages']]
-        subimage_xs = [rearrange(x, 'b h w d -> b (h w) d') for x in subimage_xs]  # h and w are number of patches
-        x = torch.cat(subimage_xs, dim=1)  # concatenate the subimages' patches
+        image_xs = self.vision_transformer.patch_embed(img)
+        # subimage_xs = [rearrange(x, 'b h w d -> b (h w) d') for x in subimage_xs]  # h and w are number of patches
+        image_xs = rearrange(image_xs, 'b h w d -> b (h w) d')
+        # x = torch.cat(subimage_xs, dim=1)  # concatenate the subimages' patches
         # recover a dummy w dimension for the _pos_embed in timm
-        x = rearrange(x, 'b (h w) d -> b h w d', w=1)
+        x = rearrange(image_xs, 'b (h w) d -> b h w d', w=1)
 
         x = self.vision_transformer._pos_embed(x)  # this will also add the cls token
         x = self.vision_transformer.norm_pre(x)
 
-        if 'masks' in img:
+        if isinstance(img, dict) and 'masks' in img:
             masks = torch.cat([rearrange(x, 'b h w -> b (h w)') for x in img['masks']], dim=1)
             masks = F.pad(masks, (x.shape[-2] - masks.shape[-1], 0), value=True)  # class token is always valid
             masks = torch.einsum('bi,bj->bij', masks, masks)

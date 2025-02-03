@@ -69,27 +69,21 @@ class SubimageHandler:
         image_data_dict, self.patch_size = preprocess_subimages(image_data_dict, *args, **kwargs)
 
         # process the subimages if there are any
-        print("z norming subimages")
+        print("z norming images")
         image_data_dict, self.subimage_mean, self.subimage_std = z_norm_subimages(image_data_dict, *args, **kwargs)
 
-        print("transposing subimages")
+        print("transposing images")
         for k, x in image_data_dict.items():
-            for s_image_name, s_image_data in image_data_dict[k]['sub_images'].items():
-                image_data_dict[k]['sub_images'][s_image_name]['sub_image_cropped_padded_z_normed'] = s_image_data[
-                    'sub_image_cropped_padded_z_normed'].transpose((2, 0, 1))
+            image_data_dict[k]['image_cropped_padded_z_normed'] = image_data_dict[k]['image_cropped_padded_z_normed'].transpose((2, 0, 1))
 
         # get rid of the extra fields
         print("rewriting dictionary keys")
-        subimage_names = list(image_data_dict[list(image_data_dict.keys())[0]]['sub_images'].keys())
         for image_name, image_data in image_data_dict.items():
-            subimages = image_data.pop('sub_images')
-            image_data['sub_images'] = []
-            for s_image_name in subimage_names:
-                image_data['sub_images'].append(
-                    {'image': subimages[s_image_name]['sub_image_cropped_padded_z_normed'],
-                     'mask': subimages[s_image_name]['patch_mask'],
-                     'position': subimages[s_image_name]['position'],
-                     'name': s_image_name})
+            image_data['image'] = image_data['image_cropped_padded_z_normed']
+            image_data['mask'] = image_data['patch_mask']
+            del image_data_dict[image_name]['patch_mask']
+            del image_data_dict[image_name]['image_cropped_padded_z_normed']
+
         self.image_data_dict = image_data_dict
         return image_data_dict
 

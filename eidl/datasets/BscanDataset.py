@@ -198,84 +198,35 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
     Returns
     -------
     """
-    pvalovia_dir = os.path.join(data_root, 'pvalovia-data')
-
-    # check if cropped image data exists
     subimage_loader = SubimageHandler()
-    if cropped_image_data_path is None:
-        # get the images and labels from the image directories
-        image_root = os.path.join(data_root, 'reports_cleaned')
-        assert os.path.exists(
-            image_root), f"image directory {image_root} does not exist, please download the data from drive"
 
-        assert os.path.exists(
-            pvalovia_dir), f"pvalovia directory {pvalovia_dir} does not exist, please download the data from github"
-        image_dirs = os.listdir(image_root)
-        image_data_dict = {}
-        for i, image_dir in enumerate(image_dirs):
-            print(f"working on image directory {image_dir}, {i+1}/{len(image_dirs)}")
-            label = image_dir[0]  # get the image label
-            image_fns = os.listdir((this_image_dir := os.path.join(image_root, image_dir)))
-            image_names = [n.split('.')[0] for n in image_fns]  # remove file extension
-            load_image_args = [(os.path.join(this_image_dir, fn), image_size) for fn in image_fns]
-            with Pool(n_jobs) as p:
-                images = p.starmap(load_bscan_image, load_image_args)
-            image_data_dict = {**image_data_dict,
-                                      **{image_name: {'name': image_name, 'image': image, 'label': label}
-                                         for image_name, image in zip(image_names, images)}}
-    else:
-        subimage_data = pickle.load(open(cropped_image_data_path, 'rb'))
-        image_data = subimage_loader.load_image_data(subimage_data, n_jobs=n_jobs, *args, **kwargs)
-        #results = get_all_key_paths(image_data)
-        load_image_args = [(image_name, image_size, image_info_dict['original_image']) for image_name, image_info_dict in subimage_data.items()]
-        with Pool(n_jobs) as p:
-            image_data_dict = dict(p.starmap(resize_image, load_image_args))  # this dict contains the resized image
-
-        for k in image_data.keys():
-            image_data_dict[k] = {**image_data_dict[k], **image_data[k]}  # merge the two dicts
-
+    subimage_data = pickle.load(open(cropped_image_data_path, 'rb'))
+    image_data = subimage_loader.load_image_data(subimage_data, n_jobs=n_jobs, *args, **kwargs)
+    load_image_args = [(image_name, image_size, image_info_dict['image']) for image_name, image_info_dict in subimage_data.items()]
+    # print(image_data['n66_5.png'].keys())
+    # dict_keys(['image', 'label', 'image_cropped_padded', 'patch_mask', 'image_cropped_padded_z_normed'])
+    
     # remove .png from image names if it exists, the image names are the keys of the dict image_data_dict
+    image_data_dict = image_data
     image_data_dict = {key.replace('.png', ''): value for key, value in image_data_dict.items()}
 
-    # perform z-norm
-    # compute white mask for each image
-    for k, x in image_data_dict.items():
-        image_data_dict[k]['white_mask'] = generate_image_binary_mask(x['image'], channel_first=False)
-
-    # z-normalize the images
-    # the z-normal should be computed from the 177 images, not from the 455 trials
-    # print([x['image'] for k, x in image_data_dict.items()])
     image_data = np.array([x['image'] for k, x in image_data_dict.items()])
     image_means = np.mean(image_data, axis=(0, 1, 2))
     image_stds = np.std(image_data, axis=(0, 1, 2))
-    for k, x in image_data_dict.items():
-        image_data_dict[k]['image_z_normed'] = (x['image'] - image_means) / image_stds
-
-    # make the image channel_first to be compatible with downstream training
-    for k, x in image_data_dict.items():
-        image_data_dict[k]['image_z_normed'] = image_data_dict[k]['image_z_normed'].transpose((2, 0, 1))
 
     trial_samples = []
     image_name_counts = defaultdict(int)
-
+    
     # load gaze sequences
     if root_drive_path_cleaned is not None:
         def convert_img_name(input_img_name):
-            """takes a image name [nw]\d+ can turns it into (normal|wetAMD)\d+"""
             # assert the input name matches the pattern [nw]\d+
             assert re.match(r'^[nw]\d+$', input_img_name), f"Input image name '{input_img_name}' does not match the pattern '[nw]\\d+'"
             return 'normal' + input_img_name[1:] if input_img_name[0] == 'n' else 'wetAMD' + input_img_name[1:]
 
-        df_combined = load_all_fixations(root_drive_path_gaze, root_drive_path_cleaned) # load_all_karen_fixations(all_karen_tsv_fixation_path)
+        df_combined = pd.read_csv('all_data.csv') # load_all_fixations(root_drive_path_gaze, root_drive_path_cleaned)
         # keep only the rows where the image_name starts with either w or n
         df_filtered = df_combined[df_combined['image_name'].apply(lambda x: x is not None and x[0] in ['w', 'n'])]
-        # the image names in df_combined separated for each subimage, e.g., n1_1, n1_2, n1_3, n1_4,...,
-        # we need to group the subimages together, that is n1_1, n1_2, n1_3, n1_4 -> n1
-        df_filtered.loc[:, 'grouped_image_name'] = df_filtered['image_name'].apply(lambda x: x.split('_')[0])
-        # remap the image names to the normal and wetAMD naming convention
-        df_filtered.loc[:, 'grouped_image_name'] = df_filtered['grouped_image_name'].apply(convert_img_name)
-        df_filtered.loc[:, 'layer'] = df_filtered['image_name'].apply(lambda x: x.split('_')[1].strip('.png'))
-
         # get the presented media width and height
         stimulus_width = df_filtered['Presented Media width [px]'].unique()
         stimulus_height = df_filtered['Presented Media height [px]'].unique()
@@ -284,79 +235,118 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
         stimulus_width = stimulus_width[0]
         stimulus_height = stimulus_height[0]
 
-        image_height, image_width = image_data_dict[list(image_data_dict.keys())[0]]['sub_images'][0]['image'].shape[1:]
+        image_height, image_width = image_data_dict[list(image_data_dict.keys())[0]]['image'].shape[1:]
         n_patches_height, n_patches_width = int(image_height/patch_size[0]), int(image_width/patch_size[1])
 
-        unique_images = df_filtered['grouped_image_name'].unique()
+        unique_images = df_filtered['image_name'].unique()
         for i, image_name in enumerate(unique_images):
-            # Iterate over the layers/subimages for this image
-            layers = df_filtered[df_filtered['grouped_image_name'] == image_name]['layer'].unique()
-            fixation_sequences = []
-            aois = []
-            # Ensure the layers are handled consistently (e.g., 1 to 5)
-            max_layers = 5  # change as needed
-            all_layers = range(1, max_layers + 1)  
-            for layer in all_layers:
-                if layer in layers:
-                    # Get the fixation points for the current layer
-                    fixations = df_filtered[
-                        (df_filtered['grouped_image_name'] == image_name) & 
-                        (df_filtered['layer'] == layer)
+            fixations = df_filtered[
+                        (df_filtered['image_name'] == image_name)
                     ][['Fixation point X [DACS px]', 'Fixation point Y [DACS px]']].values
-                    # Filter out points outside the presented media (within the stimulus dimensions)
-                    valid_fixations = fixations[
-                        (fixations[:, 0] >= 0) & (fixations[:, 0] <= stimulus_width) &  # X within width
-                        (fixations[:, 1] >= 0) & (fixations[:, 1] <= stimulus_height)  # Y within height
-                    ]
-                    # Append the valid fixation points sequence for this layer
-                    fixation_sequences.append(valid_fixations)  # this is width, height
-                    # Create AOI heatmap
-                    aoi, xedges, yedges = np.histogram2d(
-                        valid_fixations[:, 1],  # change this to height, width to match the image_data_dict's axis
-                        valid_fixations[:, 0], 
-                        bins=(n_patches_height, n_patches_width)
-                    )
-                    aoi = aoi / aoi.sum()  # Normalize
-                else:
-                    # Create a blank AOI array if the layer is missing
-                    fixation_sequences.append(np.array([]))
-                    aoi = np.zeros((n_patches_height, n_patches_width))
-                aois.append(aoi)
-            trial_samples.append({**{'name': image_name, 'fix_seq': fixation_sequences, 'aoi': aois}, **image_data_dict[image_name]})
+            valid_fixations = fixations[
+                (fixations[:, 0] >= 0) & (fixations[:, 0] <= stimulus_width) &  # X within width
+                (fixations[:, 1] >= 0) & (fixations[:, 1] <= stimulus_height)  # Y within height
+            ]
+            aoi, xedges, yedges = np.histogram2d(
+                valid_fixations[:, 1],  # change this to height, width to match the image_data_dict's axis
+                valid_fixations[:, 0], 
+                bins=(n_patches_height, n_patches_width)
+            )
+            aoi = aoi / aoi.sum()  # Normalize
+            trial_samples.append({**{'name': image_name, 'fix_seq': valid_fixations, 'aoi': aoi}, **image_data_dict[image_name.split('.png')[0]]})
+        
+            # # Iterate over the layers/subimages for this image
+            # layers = df_filtered[df_filtered['grouped_image_name'] == image_name]['layer'].unique()
+            # fixation_sequences = []
+            # aois = []
+            # # Ensure the layers are handled consistently (e.g., 1 to 5)
+            # max_layers = 5  # change as needed
+            # all_layers = range(1, max_layers + 1)  
+            # for layer in all_layers:
+            #     if layer in layers:
+            #         # Get the fixation points for the current layer
+            #         fixations = df_filtered[
+            #             (df_filtered['grouped_image_name'] == image_name) & 
+            #             (df_filtered['layer'] == layer)
+            #         ][['Fixation point X [DACS px]', 'Fixation point Y [DACS px]']].values
+            #         # Filter out points outside the presented media (within the stimulus dimensions)
+            #         valid_fixations = fixations[
+            #             (fixations[:, 0] >= 0) & (fixations[:, 0] <= stimulus_width) &  # X within width
+            #             (fixations[:, 1] >= 0) & (fixations[:, 1] <= stimulus_height)  # Y within height
+            #         ]
+            #         # Append the valid fixation points sequence for this layer
+            #         fixation_sequences.append(valid_fixations)  # this is width, height
+            #         # Create AOI heatmap
+            #         aoi, xedges, yedges = np.histogram2d(
+            #             valid_fixations[:, 1],  # change this to height, width to match the image_data_dict's axis
+            #             valid_fixations[:, 0], 
+            #             bins=(n_patches_height, n_patches_width)
+            #         )
+            #         aoi = aoi / aoi.sum()  # Normalize
+            #     else:
+            #         # Create a blank AOI array if the layer is missing
+            #         fixation_sequences.append(np.array([]))
+            #         aoi = np.zeros((n_patches_height, n_patches_width))
+            #     aois.append(aoi)
+            # trial_samples.append({**{'name': image_name, 'fix_seq': fixation_sequences, 'aoi': aois}, **image_data_dict[image_name]})
+
+
+    # plot the distribution of among trials and among images
+    image_labels = np.array([v['label'] for v in image_data_dict.values()])
+    unique_labels = np.unique(image_labels)
+
+    # print('Trial sample keys: ')
+    # print(trial_samples[0].keys())
+    # dict_keys(['name', 'fix_seq', 'aoi', 'original_image', 'label', 'image_cropped_padded', 'white_mask', 'image', 'mask'])
+
+    # trial_labels = np.array([v['label'] for v in trial_samples])
+    # plt.bar(np.arange(len(unique_labels)), [np.sum(trial_labels==l) for l in unique_labels])
+    # plt.xlabel("Number of images")
+    # plt.xticks(np.arange(len(unique_labels)), unique_labels)
+    # plt.title("Number of trials per label")
+    # plt.savefig('Distribution_among_trials.png')
 
     # add the images that doesn't have fixation seq. When all_karen_tsv_fixation_path is not provided, all images don't have fixation seq and are added here.
     # The trial_samples are what is used in training
     no_fixation_count = 0
     trial_samples_image_names = [x['name'] for x in trial_samples]
-    for image_name, image_data in image_data_dict.items():
-        if image_name not in trial_samples_image_names:
-            trial_samples.append({**{'name': image_name, 'fix_seq': np.zeros((0, 2))}, **image_data})
-            no_fixation_count += 1
-    print(f"There are {no_fixation_count} images among {len(image_data_dict)} that doesn't have fixation data")
+    # for image_name, image_data in image_data_dict.items():
+    #     if image_name+'.png' not in trial_samples_image_names:
+    #         trial_samples.append({**{'name': image_name, 'fix_seq': np.zeros((0, 2))}, **image_data})
+    #         no_fixation_count += 1
+    # print(f"There are {no_fixation_count} images among {len(image_data_dict)} that doesn't have fixation data")
+    # print(f"There are {len(trial_samples_image_names)} images that we will perform the training for!")
 
-    print(f"Each image is used in on average:median {np.mean(list(image_name_counts.values()))}:{np.median(list(image_name_counts.values()))} trials")
-    # plot the distribution of among trials and among images
-    image_labels = np.array([v['label'] for v in image_data_dict.values()])
-    unique_labels = np.unique(image_labels)
+    subimage_loader2 = SubimageHandler()
 
-    plt.bar(np.arange(len(unique_labels)), [np.sum(image_labels==l) for l in unique_labels])
-    plt.xlabel("Number of images")
-    plt.xticks(np.arange(len(unique_labels)), unique_labels)
-    plt.title("Number of images per label")
-    plt.show()
+    subimage_data2 = pickle.load(open(cropped_image_data_path, 'rb'))
+    subimage_data2 = {key: value for key, value in subimage_data2.items() if key in trial_samples_image_names}
+    image_data_dict2 = subimage_loader2.load_image_data(subimage_data2, n_jobs=n_jobs, *args, **kwargs)
+    image_data_dict2 = {key: value for key, value in image_data_dict2.items()}
 
-    trial_labels = np.array([v['label'] for v in trial_samples])
-    plt.bar(np.arange(len(unique_labels)), [np.sum(trial_labels==l) for l in unique_labels])
-    plt.xlabel("Number of images")
-    plt.xticks(np.arange(len(unique_labels)), unique_labels)
-    plt.title("Number of trials per label")
-    plt.show()
+    image_data2 = np.array([x['image'] for k, x in image_data_dict2.items()])
+    image_means2 = np.mean(image_data2, axis=(0, 1, 2))
+    image_stds2 = np.std(image_data2, axis=(0, 1, 2))
 
-    image_labels = np.array([v['label'] for v in image_data_dict.values()])
+    # plt.bar(np.arange(len(unique_labels)), [np.sum(image_labels==l) for l in unique_labels])
+    # plt.xlabel("Number of images")
+    # plt.xticks(np.arange(len(unique_labels)), unique_labels)
+    # plt.title("Number of images per label")
+    # plt.savefig('Distribution_among_images.png')
+
+    # trial_labels = np.array([v['label'] for v in trial_samples])
+    # plt.bar(np.arange(len(unique_labels)), [np.sum(trial_labels==l) for l in unique_labels])
+    # plt.xlabel("Number of images")
+    # plt.xticks(np.arange(len(unique_labels)), unique_labels)
+    # plt.title("Number of trials per label")
+    # plt.show()
+
+    image_labels = np.array([v['label'] for v in image_data_dict2.values()])
+    print(f"There are {len(image_labels)} images that we will perform the training for!")
     
-    return trial_samples, image_data_dict, image_labels, {'image_means': image_means, 'image_stds': image_stds,
-                                                          'subimage_mean': subimage_loader.subimage_mean, 'subimage_std': subimage_loader.subimage_std,
-                                                          'subimage_sizes': [x['image'].shape[1:] for x in trial_samples[0]['sub_images']]}
+    return trial_samples, image_data_dict2, image_labels, {'image_means': image_means2, 'image_stds': image_stds2,
+                                                          'subimage_mean': subimage_loader2.subimage_mean, 'subimage_std': subimage_loader2.subimage_std,
+                                                          'subimage_sizes': [trial_samples[0]['image'].shape[1:]]}
 
 class CompoundLabelEncoder:
 

@@ -21,14 +21,15 @@ def collate_fn_bscan(batch):
     image_resized = torch.stack([torch.FloatTensor(item['image']) for item in batch], dim=0)
     # image_original = torch.stack([torch.FloatTensor(item['original_image']) for item in batch], dim=0)
     image_original = [torch.FloatTensor(item['original_image']) for item in batch]
+    image_name = [item['name'] for item in batch]
 
     if 'sub_images' in batch[0].keys():
         img, subimage_positions = collate_subimages(batch)
         img.pop('masks')  # bscan does not use masks
         return img, label, label_encoded, fixation_sequence, aoi_heatmap, image_resized, image_original, subimage_positions
     else:
-        img = torch.stack([torch.FloatTensor(item['image_z_normed']) for item in batch], dim=0)
-        return img, label, label_encoded, fixation_sequence, aoi_heatmap, image_resized, image_original
+        img = torch.stack([torch.FloatTensor(item['image']) for item in batch], dim=0)
+        return img, label, label_encoded, fixation_sequence, aoi_heatmap, image_name, image_resized, image_original
 
 def collate_fn(batch):
     # label = torch.LongTensor([item['label'] for item in batch])

@@ -130,47 +130,32 @@ def preprocess_subimages(cropped_image_data, patch_size=(32,32), white_patch_mas
 
     """
     image_names = list(cropped_image_data.keys())
-    sub_image_names = list(cropped_image_data[image_names[0]]['sub_images'].keys())
-
-    counter = 0
-    for i, s_image_name in enumerate(sub_image_names):
-        sub_images = {image_name: (image_data['sub_images'][s_image_name]['sub_image'], image_data['sub_images'][s_image_name]['position']) for image_name, image_data in cropped_image_data.items()}
-        max_size = max([s_image.shape[:2] for (s_image, _) in sub_images.values()])
-        max_size = (max_size[0] // patch_size[0] * patch_size[0], max_size[1] // patch_size[1] * patch_size[1])
-        max_n_patches = (max_size[0] // patch_size[0], max_size[1] // patch_size[1])
-
-        print(f"resizing sub-images {s_image_name}, {i + 1}/{len(sub_image_names)}, they will be cropped&padded to {max_size}, with {max_n_patches} patches ({patch_size=})")
+    
+    max_size = max([cropped_image_data[image_name]['original_image'].shape[:2] for image_name in image_names])
+    max_size = (max_size[0] // patch_size[0] * patch_size[0], max_size[1] // patch_size[1] * patch_size[1])
+    max_n_patches = (max_size[0] // patch_size[0], max_size[1] // patch_size[1])
+    for i, image_name in enumerate(image_names):
+        if (i+1)%100 == 0:
+            print(f"resizing image {image_name}, {i + 1}/{len(image_names)}, they will be cropped & padded to {max_size}, with {max_n_patches} patches ({patch_size=})")
         # find the max patchifiable size, round down
-        i=0
-        for image_name, (s_image, position) in sub_images.items():
-            temp = crop_image(s_image, patch_size)
-            #print(i)
-            cropped_image_data[image_name]['sub_images'][s_image_name]['sub_image_cropped_padded'], patch_mask = pad_image(temp, max_n_patches, patch_size)
-            cropped_image_data[image_name]['sub_images'][s_image_name]['position'] = position
-
-            white_mask = generate_image_binary_mask(cropped_image_data[image_name]['sub_images'][s_image_name]['sub_image_cropped_padded'], channel_first=False)
-            white_mask_patches = white_mask.reshape(white_mask.shape[0] // patch_size[0], patch_size[0], white_mask.shape[1] // patch_size[1], patch_size[1])
-            white_mask_patches = white_mask_patches.transpose(0, 2, 1, 3)
-            white_mask_patches = white_mask_patches.reshape(-1, *patch_size)
-            #print(white_mask_patches)
-            #white_mask_patches = [(True if np.mean(patch) > white_patch_mask_threshold else False) for patch in white_mask_patches]
-            white_mask_patches = [(True) for patch in white_mask_patches]
-            #print(white_mask_patches)
-            if (i ==0):
-                #print(white_mask_patches)
-                i=i+1
-
-            white_mask_patches = np.reshape(white_mask_patches, patch_mask.shape)
-            patch_mask = np.logical_and(patch_mask, white_mask_patches)
-            # add white and black masks
-            cropped_image_data[image_name]['sub_images'][s_image_name]['patch_mask'] = patch_mask
+        temp = crop_image(cropped_image_data[image_name]['original_image'], patch_size)
+        cropped_image_data[image_name]['image_cropped_padded'], patch_mask = pad_image(temp, max_n_patches, patch_size)
+        
+        white_mask = generate_image_binary_mask(cropped_image_data[image_name]['image_cropped_padded'], channel_first=False)
+        white_mask_patches = white_mask.reshape(white_mask.shape[0] // patch_size[0], patch_size[0], white_mask.shape[1] // patch_size[1], patch_size[1])
+        white_mask_patches = white_mask_patches.transpose(0, 2, 1, 3)
+        white_mask_patches = white_mask_patches.reshape(-1, *patch_size)
+        white_mask_patches = [(True) for patch in white_mask_patches]
+        white_mask_patches = np.reshape(white_mask_patches, patch_mask.shape)
+        patch_mask = np.logical_and(patch_mask, white_mask_patches)
+        # add white and black masks
+        cropped_image_data[image_name]['white_mask'] = white_mask
+        cropped_image_data[image_name]['patch_mask'] = patch_mask
 
             # plt.imsave(f'C:/Users/apoca/Downloads/temp/{counter}_{s_image_name}_Aoriginal_subimage.png', s_image)
             # plt.imsave(f'C:/Users/apoca/Downloads/temp/{counter}_{s_image_name}_Bimage_cropped.png', temp)
             # plt.imsave(f'C:/Users/apoca/Downloads/temp/{counter}_{s_image_name}_Cimage_padded.png', cropped_image_data[image_name]['sub_images'][s_image_name]['sub_image_cropped_padded'])
             # plt.imsave(f'C:/Users/apoca/Downloads/temp/{counter}_{s_image_name}_Dpatch_mask.png', cropped_image_data[image_name]['sub_images'][s_image_name]['patch_mask'])
-
-            counter += 1
     return cropped_image_data, patch_size
 
 
@@ -213,24 +198,7 @@ def get_image_std(image, axis=(0, 1)):
 
 def z_norm_subimages(name_label_images_dict, n_jobs=1, *args, **kwargs):
     image_names = list(name_label_images_dict.keys())
-    sub_image_names = list(name_label_images_dict[image_names[0]]['sub_images'].keys())
-
-    # subimage_info = defaultdict(list)  # subimage name -> list of this type of subimages in all images
-    # for image_name, image_data in name_label_images_dict.items():
-    #     for s_image_name, s_image_data in image_data['sub_images'].items():
-    #         subimage_info[s_image_name].append(s_image_data['sub_image_cropped_padded'])
-    # # concate the list in the subimage dics
-    # subimage_info = [np.stack(subimages, axis=0) for subimages in subimage_info.values()]
-    # # compute mean and stds for each subimage type
-    # if n_jobs > 1:
-    #     with Pool(n_jobs) as p:
-    #         subimage_info = p.map(get_mean_std_subimages, subimage_info)
-    # else:
-    #     subimage_info = [get_mean_std_subimages(subimages) for subimages in subimage_info]
-    # all_mean = np.mean(np.concatenate([x[0] for x in subimage_info]), axis=(0))
-
-
-    all_sub_images = [image_data['sub_images'][s_image_name]['sub_image'] for image_name, image_data in name_label_images_dict.items() for i, s_image_name in enumerate(sub_image_names)]
+    all_sub_images = [name_label_images_dict[image_name]['original_image'] for image_name in image_names]
 
     if n_jobs > 1:
         with Pool(n_jobs) as p:
@@ -253,21 +221,17 @@ def z_norm_subimages(name_label_images_dict, n_jobs=1, *args, **kwargs):
     #     images = p.starmap(z_normalize_image, znorm_image_args)
 
     if n_jobs > 1:
-        znorm_args = [(image_data['sub_images'][s_image_name]['sub_image_cropped_padded'], all_mean, all_std)
-                      for image_name, image_data in name_label_images_dict.items()
-                      for s_image_name in sub_image_names]
+        znorm_args = [(name_label_images_dict[image_name]['image_cropped_padded'], all_mean, all_std)
+                      for image_name in image_names]
         with Pool(n_jobs) as p:
             normalized_images = p.starmap(z_normalize_image, znorm_args)
         idx = 0
         for image_name, image_data in name_label_images_dict.items():
-            for s_image_name in sub_image_names:
-                image_data['sub_images'][s_image_name]['sub_image_cropped_padded_z_normed'] = normalized_images[idx]
-                idx += 1
+            image_data['image_cropped_padded_z_normed'] = normalized_images[idx]
+            idx += 1
     else:
         for image_name, image_data in name_label_images_dict.items():
-            for s_image_name, s_image_data in image_data['sub_images'].items():
-                s_image_data['sub_image_cropped_padded_z_normed'] = z_normalize_image(s_image_data['sub_image_cropped_padded'], all_mean, all_std)
-                # s_image_data['sub_image_cropped_padded_z_normed'] = (s_image_data['sub_image_cropped_padded'] - all_mean) / all_std
+            image_data['image_cropped_padded_z_normed'] = z_normalize_image(image_data['image_cropped_padded'], all_mean, all_std)
 
     return name_label_images_dict, all_mean, all_std
 

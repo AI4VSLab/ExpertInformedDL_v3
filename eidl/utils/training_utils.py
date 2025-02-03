@@ -19,20 +19,20 @@ from eidl.viz.bad_gradient import is_bad_grad
 import scikitplot as skplt
 from matplotlib import pyplot as plt
 
-def get_roc_curve(true_labels, probabilities):
-    print(probabilities[:,1])
+def get_roc_curve(true_labels, probabilities, fold_id=''):
+    # print(probabilities[:,1])
     plt.close('all')
     plt.figure()
     plt.figure(figsize=(24, 16))
     plt.tight_layout()
     skplt.metrics.plot_roc(true_labels, probabilities, figsize=(10, 10))
-    plt.savefig("roc_curve.png")
+    plt.savefig(f"fold{fold_id}_roc_curve.png")
     plt.close('all')
 
 
 
 
-def compute_metrics(true_labels, probabilities, threshold=0.5):
+def compute_metrics(true_labels, probabilities, threshold=0.5, fold_id=''):
     # Convert probabilities to binary labels
     #print(probabilities)
     predicted_labels = (probabilities[:, 1] >= threshold).astype('int')
@@ -40,7 +40,7 @@ def compute_metrics(true_labels, probabilities, threshold=0.5):
     # Compute AUC
     auc = roc_auc_score(true_labels, probabilities[:, 1])
     #get roc curve
-    get_roc_curve(true_labels,probabilities)
+    get_roc_curve(true_labels,probabilities, fold_id)
     # Compute Precision, Recall, and F1 Score
     precision = precision_score(true_labels, predicted_labels, average='weighted')
     recall = recall_score(true_labels, predicted_labels, average='weighted')
@@ -352,7 +352,7 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
                 loss = classification_loss + attention_loss + l2_penalty
             else:
                 loss = classification_loss + attention_loss
-                print(loss)
+                # print(loss)
                 #print(type(loss))
 
         # update the weights #################################################################
@@ -406,8 +406,9 @@ def run_one_epoch_oct(mode, model: nn.Module, train_loader, device, class_weight
     return epoch_loss, epoch_acc, auc, precision, recall, f1
 
 def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weights, model_config_string, criterion, epoch_i,
-                      dist=None, alpha=None, l2_weight=None, optimizer=None, *args, **kwargs):
+                      dist=None, alpha=None, l2_weight=None, optimizer=None, results_dir='',best_heatmap=None, *args, **kwargs):
     #torch.autograd.set_detect_anomaly(True)
+    fold_id = model_config_string.split('fold')[1]
     if mode == 'train':
         model.train()
     elif mode == 'val':
@@ -418,12 +419,14 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
 
     total_samples = 0
     total_loss = 0.0
+    alignment_scores = []
     total_correct = 0
     mini_batch_i = 0
     all_postlogits = []
     all_labels = []
     pbar = tqdm(total=math.ceil(len(train_loader.dataset) / train_loader.batch_size), desc=f'Training {model_config_string}')
     pbar.update(mini_batch_i)
+    haveTo = False
 
     grad_norms = []  # debug
     for batch in train_loader:
@@ -431,7 +434,9 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         pbar.update(1)
 
         # prepare the input data ##############################################################
-        image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, *_ = batch
+        image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, name, *_ = batch
+        if best_heatmap is not None and best_heatmap[0] == name[0]:
+            haveTo = True
         # fixation_sequence_torch = torch.Tensor(rnn_utils.pad_sequence(fixation_sequence, batch_first=True))
         image = any_image_to_tensor(image, device)
         # the forward pass ###################################################################
@@ -443,7 +448,7 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
                 output, attention = output
             else:
                 attention = None 
-
+            
             attention_loss = torch.tensor(0).to(device)
             if attention is not None and alpha is not None and aoi_heatmap is not None:
                 # check the aoi needs to be flattened
@@ -453,11 +458,14 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
                     aoi_heatmap = rearrange(aoi_heatmap, 'b l h w -> b (l h w)')
                 attention = torch.sum(attention, dim=1)  # summation across the heads
                 attention /= torch.sum(attention, dim=1, keepdim=True)
-                print(f'attention in proper place {attention}')
+                # print(f'attention in proper place {attention}')
                   # normalize the attention output, so that they sum to 1
                 if dist == 'cross-entropy':
                     # loss = nn.CrossEntropyLoss(weight=class_weights)
-                    attention_loss = alpha * F.cross_entropy(attention, aoi_heatmap.to(device))
+                    alignment_score = F.cross_entropy(attention, aoi_heatmap.to(device))
+                    alignment_score_copy = F.cross_entropy(attention, aoi_heatmap.to(device))
+                    attention_loss = alpha * alignment_score
+                    alignment_scores.append(alignment_score_copy.detach().cpu().numpy())
                     # target = label_onehot_encoded.to(device)
                     # attention_loss = .01 * loss(output, target)
                 elif dist == 'Wasserstein':
@@ -467,17 +475,17 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
             y_tensor = label_onehot_encoded.to(device)
             if class_weights is not None:
                 classification_loss = criterion(weight=class_weights)(output, y_tensor)
-                print(f'classification loss {classification_loss}')
+                # print(f'classification loss {classification_loss}')
             else:
                 classification_loss = criterion()(output, y_tensor)
-                print(f'classification loss {classification_loss}')
+                # print(f'classification loss {classification_loss}')
 
             if l2_weight:
                 l2_penalty = l2_weight * sum([(p ** 2).sum() for p in model.parameters()])
                 loss = classification_loss + attention_loss + l2_penalty
             else:
                 loss = classification_loss + attention_loss
-                print(loss)
+                # print(loss)
                 # print(type(loss))
 
         # update the weights #################################################################
@@ -486,7 +494,16 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         if mode == 'train':
             # print("lossing backwards")
             #loss.backward()
+            
+            # if attention is not None:
+            #     attention.retain_grad()
+            #     print(f"Attention requires_grad: {attention.requires_grad}")
             loss.backward()
+            # if attention.grad is None:
+            #     print("Attention gradient is None. Likely not part of the computation graph.")
+            # else:
+            #     print(f"Attention gradient: {attention.grad}")
+
             # with autograd.detect_anomaly():
             #     try:
             #         loss.backward()
@@ -509,6 +526,7 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
                     bad_grads[name] = param.grad
 
             optimizer.step()
+            
         ######################################################################################
 
         # compute auc, precision, recall, f1 ################################################
@@ -521,15 +539,46 @@ def run_one_epoch_bscan(mode, model: nn.Module, train_loader, device, class_weig
         total_correct += torch.sum(predictions == label_encoded.to(device)).item()
         pbar.set_description(f'Training Epoch-[{epoch_i}]  Batch-[{mini_batch_i}]: loss:{loss.item():.6f}, with classification loss {classification_loss.item():.8f}, with attention loss #{attention_loss.item():.8f}')
 
+        if haveTo:
+            haveTo = False
+            if attention is not None and aoi_heatmap is not None:
+                AoI_heatmap = aoi_heatmap.reshape(1, 21, 32)
+                AoI_heatmap = AoI_heatmap.squeeze(0)
+                Attention_map = attention.reshape(1, 21, 32)
+                Attention_map = Attention_map.squeeze(0)
+                heatmap_array = AoI_heatmap.numpy()
+
+                plt.figure(figsize=(10, 8))
+                plt.imshow(heatmap_array, cmap='hot', interpolation='nearest')
+                plt.colorbar(label="Intensity")
+                plt.title("AoI Heatmap")
+                plt.xlabel("X-axis")
+                plt.ylabel("Y-axis")
+                plt.tight_layout()
+                plt.savefig(f"{results_dir}/Repeat{fold_id}_AoI_heatmap.png", dpi=300)
+
+                
+                heatmap_array = Attention_map.detach().cpu().numpy()
+                
+                plt.figure(figsize=(10, 8))
+                plt.imshow(heatmap_array, cmap='hot', interpolation='nearest')
+                plt.colorbar(label="Intensity")
+                plt.title("Attention Map")
+                plt.xlabel("X-axis")
+                plt.ylabel("Y-axis")
+                plt.tight_layout()
+                plt.savefig(f"{results_dir}/Repeat{fold_id}_Attention_Map-E{epoch_i}.png", dpi=300)
+
+
     all_postlogits = np.concatenate(all_postlogits, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
-
-    auc, precision, recall, f1 = compute_metrics(all_labels, all_postlogits)
+    
+    auc, precision, recall, f1 = compute_metrics(all_labels, all_postlogits, fold_id=fold_id)
     
     epoch_loss = total_loss / total_samples
     epoch_acc = (total_correct / total_samples)
     pbar.close()
-    return epoch_loss, epoch_acc, auc, precision, recall, f1
+    return epoch_loss, epoch_acc, auc, precision, recall, f1, alignment_scores
 
 
 def train_oct_model(model, training_config_string, train_loader, valid_loader, optimizer, results_dir,
@@ -583,6 +632,7 @@ def train_oct_model(model, training_config_string, train_loader, valid_loader, o
 def train_bscan_model(model, training_config_string, train_loader, valid_loader, optimizer, results_dir,
                     criterion=nn.CrossEntropyLoss, num_epochs=100, alpha=0.01, l2_weight=None, dist='cross-entropy', lr_scheduler=None, *args, **kwargs):
 
+    fold_id = training_config_string.split('fold')[1]
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
@@ -592,20 +642,35 @@ def train_bscan_model(model, training_config_string, train_loader, valid_loader,
     train_acc_list = []
     valid_loss_list = []
     valid_acc_list = []
+    train_f1_list = []
+    val_f1_list = []
+    alignment_scores = []
+
+    best_heatmap = None
+    max_fix_seq = 0
+    for batch in train_loader:
+        image, label_encoded, label_onehot_encoded, fixation_sequence, aoi_heatmap, name, *_ = batch
+        if max_fix_seq < len(fixation_sequence):
+            max_fix_seq = len(fixation_sequence)
+            best_heatmap = name
+
     for epoch in range(num_epochs):
         print(f'epoch:{epoch:d} / {num_epochs:d}')
         print('*' * 100)
-        train_loss, train_acc, train_auc, train_precision, train_recall, train_f1 = run_one_epoch_bscan('train', model, train_loader, optimizer=optimizer, device=device, model_config_string=training_config_string, criterion=criterion,
-                                                  dist=dist, alpha=alpha, l2_weight=l2_weight, epoch_i=epoch, *args, **kwargs)
+        train_loss, train_acc, train_auc, train_precision, train_recall, train_f1, asc = run_one_epoch_bscan('train', model, train_loader, optimizer=optimizer, device=device, model_config_string=training_config_string, criterion=criterion,
+                                                  dist=dist, alpha=alpha, l2_weight=l2_weight, epoch_i=epoch, results_dir=results_dir, best_heatmap=best_heatmap, *args, **kwargs)
         if lr_scheduler is not None:
             lr_scheduler.step()
         train_loss_list.append(train_loss)
         train_acc_list.append(train_acc)
-        valid_loss, valid_acc, valid_auc, valid_precision, valid_recall, valid_f1 = run_one_epoch_bscan('val', model, valid_loader, device=device, model_config_string=training_config_string, criterion=criterion,
-                                                  dist=dist, alpha=alpha, l2_weight=l2_weight, epoch_i=epoch, *args, **kwargs)
+        train_f1_list.append(train_f1)
+        alignment_scores.extend(asc)
+        valid_loss, valid_acc, valid_auc, valid_precision, valid_recall, valid_f1, _ = run_one_epoch_bscan('val', model, valid_loader, device=device, model_config_string=training_config_string, criterion=criterion,
+                                                  dist=dist, alpha=alpha, l2_weight=l2_weight, epoch_i=epoch, results_dir=results_dir, *args, **kwargs)
         optimizer.zero_grad()
         valid_loss_list.append(valid_loss)
         valid_acc_list.append(valid_acc)
+        val_f1_list.append(valid_f1)
         print("training loss: {:.4f}, training acc: {:.4f}; validation loss {:.4f}, validation acc: {:.4f}, current lr: {:.8f}"
               "".format(train_loss, train_acc, valid_loss, valid_acc, optimizer.param_groups[0]['lr']))
 
@@ -626,7 +691,25 @@ def train_bscan_model(model, training_config_string, train_loader, valid_loader,
     save_model(model, os.path.join(results_dir, f'final_{training_config_string}.pt'), save_object=True)
     save_model(model, os.path.join(results_dir, f'final_{training_config_string}_statedict.pt'), save_object=False)
 
-    return train_loss_list, train_acc_list, valid_loss_list, valid_acc_list
+    plt.figure(figsize=(8, 6))
+    plt.plot(alignment_scores, linestyle='-', color='b', label='Alignment Score')
+    plt.title("Alignment Scores Over Epochs", fontsize=14)
+    plt.xlabel("Step", fontsize=12)
+    plt.ylabel("Alignment Score", fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend(fontsize=10)
+    plt.savefig(f"{results_dir}/{fold_id}_alignment_scores_plot.png")  # Save the plot
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(train_loss_list, linestyle='-', color='b', label='Total Loss')
+    plt.title("Total Loss Over Epochs", fontsize=14)
+    plt.xlabel("Epochs", fontsize=12)
+    plt.ylabel("Total Loss", fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend(fontsize=10)
+    plt.savefig(f"{results_dir}/{fold_id}_loss_graph.png")  # Save the plot
+
+    return train_loss_list, train_acc_list, valid_loss_list, valid_acc_list, train_f1_list, val_f1_list
 
 
 # def test_without_fixation(model, data_loader, device):
