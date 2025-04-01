@@ -27,9 +27,9 @@ data_root = ''  # this path is atm not used, the image data is loaded from the c
 
 #torch.autograd.set_detect_anomaly(True)
 cropped_image_data_path = '/data/rishabh/ExpertInformedDL_v3/bscan_imgs.p'  # this file is loaded in BscanDataset.get_bscan_data
-all_karen_tsv_fixation_path = '/data/leo/data/BScan/ExpertEyetracking/all_karen.tsv'  # this file is used to fix the fixation points
-all_fixation_path_gaze = '/data/rishabh/ExpertInformedDL_v3/Gaze/'
-all_fixation_path_cleaned_response = '/data/rishabh/ExpertInformedDL_v3/cleaned_time_converted/'
+# all_karen_tsv_fixation_path = '/data/leo/data/BScan/ExpertEyetracking/all_karen.tsv'  # this file is used to fix the fixation points
+all_fixation_path_gaze = '/media/16TB_Storage/CenteredData/AMD_Dataset/gaze_tsv_files'
+all_fixation_path_cleaned_response = '/media/16TB_Storage/CenteredData/AMD_Dataset/response_final_cleaned_time_converted'
 
 results_dir = './results'
 dt_string = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
