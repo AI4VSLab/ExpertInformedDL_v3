@@ -149,3 +149,7 @@ UserConfig.json
 AMD/
 non-AMD/
 all_doctors eye tracking data until 8.9.24.tsv
+
+
+# Additional files to ignore - Kavin
+bscan_imgs.p
