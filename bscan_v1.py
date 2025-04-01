@@ -242,6 +242,7 @@ if __name__ == '__main__':
 # results_dir, batch_size, n_jobs=1, acc_min=.3, acc_max=1, viz_val_acc=True, plot_format='individual', num_plot=14,
     #   rollout_transparency=0.75, figure_dir=None
 
-    shutil.move('nohup.out', results_dir)
+    # shutil.move('nohup.out', results_dir)
+    shutil.move('_*00*_bscan_output.log', results_dir)
     for file_path in glob.glob('*roc_curve.png'):
         shutil.move(file_path, results_dir)
