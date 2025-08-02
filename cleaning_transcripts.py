@@ -111,8 +111,6 @@ for file in transcripts:
   grouped['OG_CSV'] = file
   all_transcripts.append(grouped)
 
-print(all_transcripts[2])
-
 all_images = []
 for file in cleaned_time:
   #row 1 is tutorial
@@ -122,17 +120,6 @@ for file in cleaned_time:
   df = df[['patient_id','text', 'image_number']].copy()
   df['OG_CSV'] = file
   all_images.append(df)
-
-all_images[0]
-
-print(f"File: {file}")
-print(df.head(3))
-print(df.index)
-
-i=3
-print(all_images[i].head(50))
-print("*"*100)
-print(all_transcripts[i].head(50))
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -169,59 +156,36 @@ def patient_image(patient_id, image_number):
 
 all_data_df = pd.concat(all_images)
 
-#function to clean transcripts
-client = OpenAI(api_key=)
-def clean(text):
-  response = client.chat.completions.create(
-      model="gpt-4o-mini",
-      messages=[
-          {"role": "system", "content": (
-              "You are a glaucoma specialist reviewing a clinician’s spoken transcript as they interpret an OCT report. Your task is to clean up the transcript by making it "
-              "grammatically correct, coherent, and medically accurate.\n\n"
-              "Preserve:\n"
-              "- The speaker’s original clinical intent\n"
-              "- Any medically relevant language or observations\n\n"
-              "Ignore filler words, hesitations, and false starts. Do not change clinical meaning. Your output should read like a fluent, professional clinical summary of what was said."
-          )},
-          {"role": "user", "content": (
-              f"Please clean up the following transcript. Make it readable and medically precise, while preserving the speaker’s intent and any clinical content. "
-              f"Output only the cleaned transcript.\n\nTranscript:\n{text}"
-          )}
-      ],
-      temperature=0.8,
-      max_tokens=1000
-    )
-
-  return response.choices[0].message.content
-
 #function to clean transcripts for VQA
-client = OpenAI(api_key="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")
+client = OpenAI(api_key="")
 def VQAclean(text, caption, label):
-  response = client.chat.completions.create(
-      model="gpt-4o-mini",
-      messages=[
-        {"role": "system", "content": (
-            "You are an expert retina specialist and medical AI researcher. Your task is to generate a clinically sound and image-grounded explanation for a Visual Question Answering (VQA) model that interprets OCT eye scans.\n\n"
-            "You are given:\n"
-            "- A raw transcript from a retina specialist. It may contain noise, hesitations, or incomplete thoughts.\n"
-            "- A caption that may describe or summarize the OCT image more coherently.\n"
-            "Your explanation should be medically accurate and concise. If the transcript contains relevant clinical insights, incorporate them. "
-            "If the transcript is nonsensical, unclear, or uninformative, prioritize the caption and the label. "
-            "The goal is to produce a medically grounded explanation suitable for training a VQA model or for presentation to another clinician."
-        )},
-        #consider writing "Opthalomogist (retina specialis)" (referring to a medical doctor) and look at results
-        {"role": "user", "content": (
-            f"Here is the data for one OCT scan:\n\n"
-            f"Transcript:\n{text}\n\n"
-            f"Caption:\n{caption}\n\n"
-            f"Please generate a clear, clinical explanation based on this information. Prioritize the most informative and medically relevant content. Output only the explanation."
-        )}
-    ],
-      temperature=0.8,
-      max_tokens=1000
-    )
+ response = client.chat.completions.create(
+     model="gpt-4o",
+     messages=[
+       {"role": "system", "content": (
+           "You are an expert ophthalmologist (retina specialist) and medical AI researcher. Your task is to generate a concise, clinically sound and image-grounded explanation for a Visual Question Answering (VQA) model that interprets OCT eye scans.\n\n"
+           "You are given:\n"
+           "- A raw transcript from a retina specialist. It may contain noise, hesitations, or incomplete thoughts.\n"
+           "- A descriptive caption that may describe or summarize the OCT image more coherently.\n"
+           "Instructions:\n"
+           "- Prioritize clinical accuracy and clarity.\n"
+           "- If the transcript contains meaningful clinical insight, incorporate it into the explanation.\n"
+           "- If the transcript lacks clinical value (e.g., hesitations, irrelevant comments), focus on the caption and label to construct a coherent explanation.\n"
+           "- Do not repeat the raw input. Output only a final explanation that could plausibly come from a retina specialist reviewing the scan."
+       )},
+       {"role": "user", "content": (
+           f"Here is the data for one OCT scan:\n\n"
+           f"Transcript:\n{text}\n\n"
+           f"Caption:\n{caption}\n\n"
+           f"Please generate a clear, clinical explanation based on this information that is suitable for another ophthalmologist or for training a medical AI model. Prioritize the most informative and medically relevant content. Output only the explanation."
+       )}
+   ],
+     temperature=0.8,
+     max_tokens=1000
+   )
 
-  return response.choices[0].message.content
+
+ return response.choices[0].message.content
 
 modify = []
 for image_index, image in enumerate(all_images):
@@ -236,47 +200,38 @@ for image_index, image in enumerate(all_images):
     all_transcripts[image_index].at[row_index, 'image_file'] = image_file
     all_transcripts[image_index].at[row_index, 'OG_CSV'] = row['OG_CSV']
     all_transcripts[image_index].at[row_index, 'text'] = row['text']
-
+for df in all_transcripts:
+    df["VQA_Transcript"] = None
 for transcript_index, transcript in enumerate(all_transcripts):
   for row_index, row in transcript.iterrows():
     text = str(row['Transcript'])
     label = str(row['class'])
     caption = str(row['text'])
-    cleaned_text = clean(text)
-    VQA_text = VQAclean(cleaned_text, caption, label)
-    all_transcripts[transcript_index].at[row_index, 'Cleaned_Transcript'] = cleaned_text
-    all_transcripts[transcript_index].at[row_index, 'VQA_Transcript'] = VQA_text
 
-all_transcripts[2].head(100)
+    explanations = []
+    for i in range (8):
+      explanation = VQAclean(text, caption, label)
+      explanations.append(explanation)
+    all_transcripts[transcript_index].at[row_index, 'VQA_Transcript'] = explanations
 
 combined_df = pd.concat(all_transcripts, ignore_index=True)
 combined_df.iloc[::10]
 
 embedder = TextEmbedder("google-t5/t5-base",max_len = 128)
-cleaned_texts = combined_df["Cleaned_Transcript"].tolist()
-ids_np, mask_np = embedder.tokenize(cleaned_texts)
-combined_df["Cleaned_input_ids"] = ids_np.tolist()
-combined_df["Cleaned_attn_mask"] = mask_np.tolist()
-VQA_texts = combined_df["VQA_Transcript"].tolist()
-ids_np, mask_np = embedder.tokenize(VQA_texts)
-combined_df["VQA_input_ids"] = ids_np.tolist()
-combined_df["VQA_attn_mask"] = mask_np.tolist()
 
-#checking ideal tokenizer length
-first_zero_indices = []
-
-for mask in combined_df["VQA_attn_mask"]:
-    if isinstance(mask, list):
-        try:
-            first_zero = mask.index(0)
-            first_zero_indices.append(first_zero)
-        except ValueError:
-            continue  # skip if 0 is not in the list
-
-if first_zero_indices:
-    print("Max of first-zero indices:", max(first_zero_indices))
-else:
-    print("No zero found in any row.")
+VQA_input_ids_list = []
+VQA_attn_mask_list = []
+for explanations in combined_df["VQA_Transcript"]:
+    input_ids_list = []
+    attn_mask_list = []
+    for explanation in explanations:
+        ids_np, mask_np = embedder.tokenize(explanation)
+        input_ids_list.append(ids_np)
+        attn_mask_list.append(mask_np)
+    VQA_input_ids_list.append(input_ids_list)
+    VQA_attn_mask_list.append(attn_mask_list)
+combined_df["VQA_input_ids"] = VQA_input_ids_list
+combined_df["VQA_attn_mask"] = VQA_attn_mask_list
 
 #standardizing images
 import io
@@ -326,36 +281,25 @@ import pandas as pd
 combined_df = pd.read_pickle("/tmp/combined_df.pkl")
 
 import tfrecord
-clean_df = combined_df.dropna(subset=["normalized_image"])
+clean_df = combined_df.dropna(subset=["normalized_image"]).copy()
 
-writer_text = tfrecord.TFRecordWriter("/tmp/Transcript.tfrecord")
 writer_VQA = tfrecord.TFRecordWriter("/tmp/VQA.tfrecord")
 
 for _, row in clean_df.iterrows():
-    clean_input_ids = row["Cleaned_input_ids"]
-    clean_attn_mask = row["Cleaned_attn_mask"]
     class_label = row["class"]
     image_data = row["normalized_image"]
     VQA_input_ids = row["VQA_input_ids"]
     VQA_attn_mask = row["VQA_attn_mask"]
     if isinstance(image_data, bytes) and isinstance(class_label, str):
-        text_record = {
-            "input_ids": (np.array(clean_input_ids, dtype=np.int64), "int"),
-            "attn_mask": (np.array(clean_attn_mask, dtype=np.int64), "int"),
-            "class": (class_label.encode("utf-8"), "byte"),
-            "normalized_image": (image_data, "byte")
-        }
-        writer_text.write(text_record)
-        VQA_record = {
-            "input_ids": (np.array(VQA_input_ids, dtype=np.int64), "int"),
-            "attn_mask": (np.array(VQA_attn_mask, dtype=np.int64), "int"),
-            "class": (class_label.encode("utf-8"), "byte"),
-            "normalized_image": (image_data, "byte")
-        }
-        writer_VQA.write(VQA_record)
-
-
-writer_text.close()
+      VQA_record = {
+          "input_ids": (np.array(VQA_input_ids, dtype=np.int64).flatten(), "int"), #shape (8, max_len)
+          "input_ids_shape": (np.array(VQA_input_ids, dtype=np.int64).shape, "int"),
+          "attn_mask_shape": (np.array(VQA_attn_mask, dtype=np.int64).shape, "int"),
+          "attn_mask": (np.array(VQA_attn_mask, dtype=np.int64).flatten(), "int"),
+          "class": (class_label.encode("utf-8"), "byte"),
+          "normalized_image": (image_data, "byte")
+      }
+      writer_VQA.write(VQA_record)
 writer_VQA.close()
 
 clean_df.head()
@@ -369,32 +313,22 @@ description = {
     "normalized_image": "byte"
 }
 
-loader_text = tfrecord_loader("/tmp/Transcript.tfrecord", None, description)
 loader_VQA = tfrecord_loader("/tmp/VQA.tfrecord", None, description)
 
-for record_text, record_VQA in zip(loader_text,loader_VQA):
-    input_ids_text = record_text["input_ids"].tolist()
-    attn_mask_text = record_text["attn_mask"].tolist()
-    class_label_text = record_text["class"].decode("utf-8")
-    input_ids_VQA = record_VQA["input_ids"].tolist()
-    attn_mask_VQA = record_VQA["attn_mask"].tolist()
-    class_label_VQA = record_VQA["class"].decode("utf-8")
-    image_bytes = record_VQA["normalized_image"]
-
-    print("Text Input IDs:", input_ids_text[:10])
-    print("VQA Input IDs:", input_ids_VQA[:10])
-    print("Label:", class_label_text)
-    print("Image bytes (Text):", len(image_bytes))
-    print("=" * 40)
+for record_VQA in loader_VQA:
+  input_ids_VQA = record_VQA["input_ids"].tolist()
+  attn_mask_VQA = record_VQA["attn_mask"].tolist()
+  class_label_VQA = record_VQA["class"].decode("utf-8")
+  image_bytes = record_VQA["normalized_image"]
 
 import shutil
 from google.colab import files
-shutil.copy("/tmp/Transcript.tfrecord", "Transcript.tfrecord")
-files.download("Transcript.tfrecord")
 shutil.copy("/tmp/VQA.tfrecord", "VQA.tfrecord")
 files.download("VQA.tfrecord")
-subset = clean_df[["Transcript", "Cleaned_Transcript", "VQA_Transcript", "File", "image_file","patient_id", "image_number"]]
+
+vqa_cols = [f"VQA_Transcripts{i+1}" for i in range(8)]
+clean_df[vqa_cols] = pd.DataFrame(clean_df["VQA_Transcript"].tolist(), index=clean_df.index)
+clean_df.drop(columns=["VQA_Transcript"], inplace=True)
+subset = clean_df[["Transcript"] + vqa_cols + ["File", "image_file","patient_id", "image_number"]]
 subset.to_csv("/tmp/subset_clean_df.csv", index=False)
 files.download("/tmp/subset_clean_df.csv")
-
-#once you've written the file, put it on the server. Use this link: https://filezilla-project.org/download.php?type=client
