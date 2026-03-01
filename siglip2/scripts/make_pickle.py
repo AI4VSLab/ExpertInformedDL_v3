@@ -21,5 +21,5 @@ for file in os.listdir(img_folder):
             image_dict[file]['original_image'] = np.array(img)
             image_dict[file]['label'] = 'N' if file[0] == 'n' else 'A'
 
-with open('/home/kavin/ExpertInformedDL_v3/bscan_imgs.p','wb') as file:
+with open('/home/kavin/ExpertInformedDL_v3/siglip2/bscan_imgs.p','wb') as file:
     pickle.dump(image_dict, file)

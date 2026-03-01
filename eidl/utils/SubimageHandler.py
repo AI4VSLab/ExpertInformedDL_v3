@@ -85,6 +85,7 @@ class SubimageHandler:
             del image_data_dict[image_name]['image_cropped_padded_z_normed']
 
         self.image_data_dict = image_data_dict
+        
         return image_data_dict
 
     def compute_perceptual_attention(self, image_name, model = None, source_attention=None, overlay_alpha=0.75, is_plot_results=True,

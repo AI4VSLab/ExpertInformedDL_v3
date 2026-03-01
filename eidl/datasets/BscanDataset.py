@@ -201,6 +201,10 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
     subimage_loader = SubimageHandler()
 
     subimage_data = pickle.load(open(cropped_image_data_path, 'rb'))
+    print("Subimage data keys: ", subimage_data.keys())
+    # print("Subimage Data:")
+    # print(subimage_data)
+
     image_data = subimage_loader.load_image_data(subimage_data, n_jobs=n_jobs, *args, **kwargs)
     load_image_args = [(image_name, image_size, image_info_dict['image']) for image_name, image_info_dict in subimage_data.items()]
     # print(image_data['n66_5.png'].keys())
@@ -217,6 +221,7 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
     trial_samples = []
     image_name_counts = defaultdict(int)
     
+    print('root_drive_path_cleaned:', root_drive_path_cleaned)
     # load gaze sequences
     if root_drive_path_cleaned is not None:
         def convert_img_name(input_img_name):
@@ -224,7 +229,8 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
             assert re.match(r'^[nw]\d+$', input_img_name), f"Input image name '{input_img_name}' does not match the pattern '[nw]\\d+'"
             return 'normal' + input_img_name[1:] if input_img_name[0] == 'n' else 'wetAMD' + input_img_name[1:]
 
-        df_combined = pd.read_csv('all_data.csv') # load_all_fixations(root_drive_path_gaze, root_drive_path_cleaned)
+        # df_combined = pd.read_csv('all_data.csv') # load_all_fixations(root_drive_path_gaze, root_drive_path_cleaned)
+        df_combined = load_all_fixations(root_drive_path_gaze, root_drive_path_cleaned)
         # keep only the rows where the image_name starts with either w or n
         df_filtered = df_combined[df_combined['image_name'].apply(lambda x: x is not None and x[0] in ['w', 'n'])]
         # get the presented media width and height
@@ -236,7 +242,7 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
         stimulus_height = stimulus_height[0]
 
         image_height, image_width = image_data_dict[list(image_data_dict.keys())[0]]['image'].shape[1:]
-        n_patches_height, n_patches_width = int(image_height/patch_size[0]), int(image_width/patch_size[1])
+        n_patches_height, n_patches_width = int(image_height/patch_size[0]), int(image_width/patch_size[1])   
 
         unique_images = df_filtered['image_name'].unique()
         for i, image_name in enumerate(unique_images):
@@ -253,7 +259,17 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
                 bins=(n_patches_height, n_patches_width)
             )
             aoi = aoi / aoi.sum()  # Normalize
-            trial_samples.append({**{'name': image_name, 'fix_seq': valid_fixations, 'aoi': aoi}, **image_data_dict[image_name.split('.png')[0]]})
+            # trial_samples.append({**{'name': image_name, 'fix_seq': valid_fixations, 'aoi': aoi}, **image_data_dict[image_name.split('.png')[0]]})
+
+            base_name = os.path.splitext(image_name)[0]  # removes .png or any other extension
+            if base_name in image_data_dict:
+                combined = {**{'name': image_name, 'fix_seq': valid_fixations, 'aoi': aoi}, **image_data_dict[base_name]}
+                trial_samples.append(combined)
+            else:
+                print(f"[WARN] Missing image data for: {base_name} — skipping")
+
+            print("Trial Samples:")
+            print(trial_samples)
         
             # # Iterate over the layers/subimages for this image
             # layers = df_filtered[df_filtered['grouped_image_name'] == image_name]['layer'].unique()
@@ -291,6 +307,19 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
             # trial_samples.append({**{'name': image_name, 'fix_seq': fixation_sequences, 'aoi': aois}, **image_data_dict[image_name]})
 
 
+    # Fallback: If no gaze data is present, populate trial_samples with empty fixation sequences and AOI
+    if not trial_samples:
+        print("[INFO] No gaze data provided. Creating dummy trial_samples with empty fix_seq and AOI.")
+        for image_name, image_data in image_data_dict.items():
+            dummy_fix_seq = np.zeros((0, 2))  # No fixations
+            dummy_aoi = np.zeros((int(image_data['image'].shape[1] / patch_size[0]),
+                                int(image_data['image'].shape[2] / patch_size[1])))  # AOI shape (height_patches, width_patches)
+
+            trial_samples.append({
+                **{'name': image_name + '.png', 'fix_seq': dummy_fix_seq, 'aoi': dummy_aoi},
+                **image_data
+            })
+
     # plot the distribution of among trials and among images
     image_labels = np.array([v['label'] for v in image_data_dict.values()])
     unique_labels = np.unique(image_labels)
@@ -320,7 +349,15 @@ def get_bscan_data(data_root, image_size, n_jobs=1, cropped_image_data_path=None
     subimage_loader2 = SubimageHandler()
 
     subimage_data2 = pickle.load(open(cropped_image_data_path, 'rb'))
+
+    print("Subimage data2 keys: ", subimage_data2.keys())
+    # print("Subimage Data2:")
+    # print(subimage_data2)
+
     subimage_data2 = {key: value for key, value in subimage_data2.items() if key in trial_samples_image_names}
+
+    print("Subimage data2 keys - after some trial_samples: ", subimage_data2.keys())
+
     image_data_dict2 = subimage_loader2.load_image_data(subimage_data2, n_jobs=n_jobs, *args, **kwargs)
     image_data_dict2 = {key: value for key, value in image_data_dict2.items()}
 

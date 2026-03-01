@@ -130,7 +130,7 @@ def preprocess_subimages(cropped_image_data, patch_size=(32,32), white_patch_mas
 
     """
     image_names = list(cropped_image_data.keys())
-    
+
     max_size = max([cropped_image_data[image_name]['original_image'].shape[:2] for image_name in image_names])
     max_size = (max_size[0] // patch_size[0] * patch_size[0], max_size[1] // patch_size[1] * patch_size[1])
     max_n_patches = (max_size[0] // patch_size[0], max_size[1] // patch_size[1])

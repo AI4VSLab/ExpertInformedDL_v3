@@ -1,0 +1,35 @@
+# -- Core
+torch>=2.2,<2.8
+torchvision>=0.17,<0.23
+
+# -- Hugging Face stack
+transformers>=4.52,<4.53
+datasets>=2.19,<3.7
+evaluate>=0.4.0,<0.5     # ✅ works – latest on PyPI is 0.4.3
+accelerate>=0.28,<0.30
+
+# -- Classic ML & utils
+scikit-learn
+pillow
+
+
+# # 1. create & activate an env (optional but recommended)
+# python3 -m venv siglip2_env
+# source siglip2_env/bin/activate
+
+# # 2. install requirements
+# pip install -r requirements.txt
+
+
+# # end-to-end run
+# # (1) train
+# python scripts/train_siglip2.py \
+#        --pickle ~/ExpertInformedDL_v3/bscan_imgs.p \
+#        --out_dir ./siglip2_runs/run1 \
+#        --epochs 10 \
+#        --batch 8
+
+# # (2) inference
+# python scripts/infer_siglip2.py \
+#        --model ./siglip2_runs/run1 \
+#        --image data/images_subset_rishabh/sample_001.png
